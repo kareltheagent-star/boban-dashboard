@@ -4,15 +4,13 @@ import Link from 'next/link';
 import '../styles/globals.css';
 import { AuthGate } from '../components/AuthGate';
 
-const requiredPassword = process.env.DASHBOARD_PASSWORD || 'change-me';
-
 export default function BobanDashboardApp({ Component, pageProps }: AppProps) {
   return (
     <>
       <Head>
         <title>Boban Dashboard</title>
       </Head>
-      <AuthGate requiredPassword={requiredPassword}>
+      <AuthGate>
         <div className="min-h-screen bg-slate-950 text-slate-100">
           <header className="border-b border-slate-800 px-4 py-3 flex items-center justify-between">
             <div className="font-mono text-sm text-slate-400">Boban Status Dashboard</div>

@@ -4,8 +4,6 @@ import { useEffect, useState } from "react";
 import { AuthGate } from "../components/AuthGate";
 import { supabase } from "../lib/supabaseClient";
 
-const requiredPassword = process.env.DASHBOARD_PASSWORD || "change-me";
-
 interface AgentStatusRow {
   id?: number;
   timestamp: string;
@@ -81,7 +79,7 @@ export default function HomePage() {
   const lastUpdated = status ? new Date(status.timestamp) : null;
 
   return (
-    <AuthGate requiredPassword={requiredPassword}>
+    <AuthGate>
       <main className="min-h-screen bg-slate-950 text-slate-100">
         <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-8">
           <header className="flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center">

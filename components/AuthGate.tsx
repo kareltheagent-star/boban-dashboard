@@ -7,10 +7,9 @@ const STORAGE_KEY = "boban-dashboard-auth";
 
 interface Props {
   children: ReactNode;
-  requiredPassword: string;
 }
 
-export function AuthGate({ children, requiredPassword }: Props) {
+export function AuthGate({ children }: Props) {
   const [password, setPassword] = useState("");
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -20,23 +19,37 @@ export function AuthGate({ children, requiredPassword }: Props) {
       typeof window !== "undefined"
         ? window.localStorage.getItem(STORAGE_KEY)
         : null;
-    if (stored && stored === requiredPassword) {
+    if (stored === "ok") {
       setAuthed(true);
     } else {
       setAuthed(false);
     }
-  }, [requiredPassword]);
+  }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === requiredPassword) {
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(STORAGE_KEY, requiredPassword);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/auth-dashboard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+
+      if (res.ok) {
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(STORAGE_KEY, "ok");
+        }
+        setAuthed(true);
+        setError(null);
+      } else {
+        const data = await res.json().catch(() => null);
+        setError(data?.error ?? "Invalid password");
       }
-      setAuthed(true);
-      setError(null);
-    } else {
-      setError("Invalid password");
+    } catch (err: any) {
+      console.error("[AuthGate] Failed to call auth API", err);
+      setError("Unable to verify password. Try again.");
     }
   };
 
@@ -79,8 +92,7 @@ export function AuthGate({ children, requiredPassword }: Props) {
             Unlock
           </button>
           <p className="text-[11px] text-slate-500">
-            Set <code className="font-mono">DASHBOARD_PASSWORD</code> in the
-            environment for real protection.
+            Dashboard password is validated server-side via DASHBOARD_PASSWORD env.
           </p>
         </form>
       </div>
