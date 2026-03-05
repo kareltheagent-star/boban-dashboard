@@ -23,11 +23,25 @@ interface AgentEventRow {
   message: string;
 }
 
+interface BacklogItem {
+  id: string;
+  title: string;
+  description?: string;
+  priority: number;
+  status: "pending" | "in_progress" | "blocked" | "done";
+  created_by?: string;
+  tags?: string[];
+  notes?: string;
+  created_at: string;
+}
+
 export default function HomePage() {
   const [status, setStatus] = useState<AgentStatusRow | null>(null);
   const [events, setEvents] = useState<AgentEventRow[]>([]);
+  const [activeBacklog, setActiveBacklog] = useState<BacklogItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [dateRange, setDateRange] = useState<"24h" | "7d" | "30d" | "all">("24h");
 
   useEffect(() => {
     async function load() {
@@ -43,25 +57,60 @@ export default function HomePage() {
         setLoading(true);
         setError(null);
 
-        const [statusResult, eventsResult] = await Promise.all([
+        let since: string | null = null;
+        const now = Date.now();
+        if (dateRange === "24h") {
+          since = new Date(now - 24 * 60 * 60 * 1000).toISOString();
+        } else if (dateRange === "7d") {
+          since = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
+        } else if (dateRange === "30d") {
+          since = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString();
+        }
+
+        const [statusResult, eventsResult, inProgressResult, pendingResult] = await Promise.all([
           supabase
             .from("agent_status")
             .select("*")
             .order("ts", { ascending: false })
             .limit(1)
             .maybeSingle(),
-          supabase
-            .from("agent_events")
-            .select("*")
+          (since
+            ? supabase
+                .from("agent_events")
+                .select("*")
+                .gte("ts", since)
+            : supabase.from("agent_events").select("*"))
             .order("ts", { ascending: false })
-            .limit(10),
+            .limit(50),
+          supabase
+            .from("agent_backlog")
+            .select("*")
+            .eq("status", "in_progress")
+            .order("priority", { ascending: true })
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+          supabase
+            .from("agent_backlog")
+            .select("*")
+            .eq("status", "pending")
+            .order("priority", { ascending: true })
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle(),
         ]);
 
         if (statusResult.error) throw statusResult.error;
         if (eventsResult.error) throw eventsResult.error;
+        if (inProgressResult.error) throw inProgressResult.error;
+        if (pendingResult.error) throw pendingResult.error;
 
         setStatus(statusResult.data ?? null);
         setEvents(eventsResult.data ?? []);
+
+        // Decide which backlog task is "active": prefer in_progress, otherwise the top pending one.
+        const active = (inProgressResult.data as BacklogItem | null) ?? (pendingResult.data as BacklogItem | null) ?? null;
+        setActiveBacklog(active);
       } catch (err: any) {
         console.error("[boban-dashboard] Failed to load status page", err);
         setError(err.message ?? "Failed to load status data");
@@ -74,7 +123,7 @@ export default function HomePage() {
 
     const interval = setInterval(load, 30_000);
     return () => clearInterval(interval);
-  }, []);
+  }, [dateRange]);
 
   const lastUpdated = status ? new Date(status.ts) : null;
 
@@ -82,18 +131,39 @@ export default function HomePage() {
     <AuthGate>
       <main className="min-h-screen bg-slate-950 text-slate-100">
         <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-8">
-          <header className="flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center">
+          <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h1 className="text-2xl font-semibold tracking-tight">Boban Status</h1>
               <p className="text-sm text-slate-400">
                 Live view of what your agent is doing and how the Mac mini is feeling.
               </p>
             </div>
-            {lastUpdated && (
-              <p className="text-xs text-slate-500">
-                Last updated {lastUpdated.toLocaleString()}
-              </p>
-            )}
+            <div className="flex flex-col items-start gap-1 sm:items-end">
+              {lastUpdated && (
+                <p className="text-xs text-slate-500">
+                  Last updated {lastUpdated.toLocaleString()}
+                </p>
+              )}
+              <div className="flex items-center gap-2">
+                <label
+                  htmlFor="date-range"
+                  className="text-xs font-medium text-slate-400"
+                >
+                  Date range
+                </label>
+                <select
+                  id="date-range"
+                  className="rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  value={dateRange}
+                  onChange={(e) => setDateRange(e.target.value as "24h" | "7d" | "30d" | "all")}
+                >
+                  <option value="24h">Last 24 hours</option>
+                  <option value="7d">Last 7 days</option>
+                  <option value="30d">Last 30 days</option>
+                  <option value="all">All time</option>
+                </select>
+              </div>
+            </div>
           </header>
 
           {!supabase && (
@@ -117,7 +187,18 @@ export default function HomePage() {
           )}
 
           {loading && (
-            <div className="text-sm text-slate-400">Loading status…</div>
+            <section className="grid gap-4 md:grid-cols-3">
+              {[0, 1, 2].map((idx) => (
+                <div
+                  key={idx}
+                  className="rounded-lg border border-slate-800 bg-slate-900/60 p-4 animate-pulse"
+                >
+                  <div className="h-3 w-24 rounded bg-slate-800" />
+                  <div className="mt-3 h-3 w-full rounded bg-slate-900" />
+                  <div className="mt-2 h-3 w-3/4 rounded bg-slate-900" />
+                </div>
+              ))}
+            </section>
           )}
 
           {!loading && !error && status && (
@@ -125,8 +206,14 @@ export default function HomePage() {
               <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
                 <h2 className="text-sm font-medium text-slate-200">Current task</h2>
                 <p className="mt-1 text-sm text-slate-100">
-                  {status.current_task || "Idle"}
+                  {activeBacklog?.title || status.current_task || "Idle"}
                 </p>
+                {activeBacklog && (
+                  <p className="mt-2 text-xs text-slate-400">
+                    Backlog: P{activeBacklog.priority} · {activeBacklog.status.replace("_", " ")}
+                    {activeBacklog.created_by ? ` · ${activeBacklog.created_by}` : ""}
+                  </p>
+                )}
                 {status.last_message && (
                   <p className="mt-2 text-xs text-slate-400">
                     Last message: {status.last_message}
