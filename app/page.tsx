@@ -136,40 +136,87 @@ export default function HomePage() {
 
               <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
                 <h2 className="text-sm font-medium text-slate-200">Mac mini health</h2>
-                <div className="mt-2 space-y-1 text-xs text-slate-300">
-                  <p>
-                    RAM:
-                    {" "}
-                    <span className="font-mono">
-                      {status.mac_ram_pct != null
-                        ? `${status.mac_ram_pct.toFixed(1)}%`
-                        : "–"}
-                    </span>
-                  </p>
-                  <p>
-                    CPU:
-                    {" "}
-                    <span className="font-mono">
-                      {status.mac_cpu_pct != null
-                        ? `${status.mac_cpu_pct.toFixed(1)}%`
-                        : "–"}
-                    </span>
-                  </p>
-                  <p>
-                    Disk:
-                    {" "}
-                    <span className="font-mono">
-                      {status.mac_disk_pct != null
-                        ? `${status.mac_disk_pct.toFixed(1)}%`
-                        : "–"}
-                    </span>
-                  </p>
+                <div className="mt-3 space-y-3 text-xs text-slate-300">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-medium text-slate-200">RAM</span>
+                      <span className="font-mono">
+                        {status.mac_ram_pct != null
+                          ? `${status.mac_ram_pct.toFixed(1)}%`
+                          : "–"}
+                      </span>
+                    </div>
+                    <div className="gauge-track">
+                      <div
+                        className={`gauge-fill ${
+                          status.mac_ram_pct == null
+                            ? ""
+                            : status.mac_ram_pct < 70
+                            ? "ok"
+                            : status.mac_ram_pct < 90
+                            ? "warn"
+                            : "danger"
+                        }`}
+                        style={{ width: `${Math.min(Math.max(status.mac_ram_pct ?? 0, 0), 100)}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-medium text-slate-200">CPU</span>
+                      <span className="font-mono">
+                        {status.mac_cpu_pct != null
+                          ? `${status.mac_cpu_pct.toFixed(1)}%`
+                          : "–"}
+                      </span>
+                    </div>
+                    <div className="gauge-track">
+                      <div
+                        className={`gauge-fill ${
+                          status.mac_cpu_pct == null
+                            ? ""
+                            : status.mac_cpu_pct < 70
+                            ? "ok"
+                            : status.mac_cpu_pct < 90
+                            ? "warn"
+                            : "danger"
+                        }`}
+                        style={{ width: `${Math.min(Math.max(status.mac_cpu_pct ?? 0, 0), 100)}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-medium text-slate-200">Disk</span>
+                      <span className="font-mono">
+                        {status.mac_disk_pct != null
+                          ? `${status.mac_disk_pct.toFixed(1)}%`
+                          : "–"}
+                      </span>
+                    </div>
+                    <div className="gauge-track">
+                      <div
+                        className={`gauge-fill ${
+                          status.mac_disk_pct == null
+                            ? ""
+                            : status.mac_disk_pct < 80
+                            ? "ok"
+                            : status.mac_disk_pct < 95
+                            ? "warn"
+                            : "danger"
+                        }`}
+                        style={{ width: `${Math.min(Math.max(status.mac_disk_pct ?? 0, 0), 100)}%` }}
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 
               <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
                 <h2 className="text-sm font-medium text-slate-200">Gateway & OAuth</h2>
-                <p className="mt-2 text-sm">
+                <p className="mt-3 text-sm">
                   <span
                     className={
                       status.gateway_running
@@ -181,7 +228,7 @@ export default function HomePage() {
                     {status.gateway_running ? "Gateway running" : "Gateway stopped"}
                   </span>
                 </p>
-                <p className="mt-2 text-xs text-slate-300">
+                <p className="mt-3 text-xs text-slate-300">
                   OAuth expires in
                   {" "}
                   <span className="font-mono">
