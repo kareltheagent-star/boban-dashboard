@@ -145,8 +145,8 @@ export default function BacklogPage({ items, error }: Props) {
   const columns: { key: BacklogItem['status']; title: string }[] = [
     { key: 'pending',      title: 'Pending' },
     { key: 'in_progress',  title: 'In Progress' },
-    { key: 'done',         title: 'Done' },
     { key: 'blocked',      title: 'Blocked' },
+    { key: 'done',         title: 'Done' },
   ];
 
   const grouped: Record<BacklogItem['status'], BacklogItem[]> = {
