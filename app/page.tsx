@@ -6,7 +6,7 @@ import { supabase } from "../lib/supabaseClient";
 
 interface AgentStatusRow {
   id?: number;
-  timestamp: string;
+  ts: string;
   current_task: string | null;
   mac_ram_pct: number | null;
   mac_cpu_pct: number | null;
@@ -18,9 +18,9 @@ interface AgentStatusRow {
 
 interface AgentEventRow {
   id?: number;
+  ts: string;
   type: string;
   message: string;
-  timestamp: string;
 }
 
 export default function HomePage() {
@@ -47,13 +47,13 @@ export default function HomePage() {
           supabase
             .from("agent_status")
             .select("*")
-            .order("timestamp", { ascending: false })
+            .order("ts", { ascending: false })
             .limit(1)
             .maybeSingle(),
           supabase
             .from("agent_events")
             .select("*")
-            .order("timestamp", { ascending: false })
+            .order("ts", { ascending: false })
             .limit(10),
         ]);
 
@@ -76,7 +76,7 @@ export default function HomePage() {
     return () => clearInterval(interval);
   }, []);
 
-  const lastUpdated = status ? new Date(status.timestamp) : null;
+  const lastUpdated = status ? new Date(status.ts) : null;
 
   return (
     <AuthGate>
@@ -207,12 +207,12 @@ export default function HomePage() {
               <ul className="mt-3 space-y-2 text-xs text-slate-300">
                 {events.map((evt) => (
                   <li
-                    key={evt.id ?? `${evt.type}-${evt.timestamp}`}
+                    key={evt.id ?? `${evt.type}-${evt.ts}`}
                     className="flex flex-col gap-0.5 border-l border-slate-800 pl-3"
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-mono text-[11px] text-slate-500">
-                        {new Date(evt.timestamp).toLocaleString()}
+                        {new Date(evt.ts).toLocaleString()}
                       </span>
                       <span className="ml-2 rounded-full bg-slate-800 px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-300">
                         {evt.type}
