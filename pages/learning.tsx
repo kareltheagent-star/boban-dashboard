@@ -65,7 +65,7 @@ export const getServerSideProps: GetServerSideProps<Props> = async () => {
   }
 
   const { data, error } = await supabase
-    .from<LearningItem>('agent_learning_backlog')
+    .from('agent_learning_backlog')
     .select('*')
     .order('priority', { ascending: true })
     .order('created_at', { ascending: false });

@@ -85,7 +85,7 @@ export default function BacklogPage({ items, error }: Props) {
       if (editingId == null) {
         // Create new
         const { data, error: insertError } = await supabase
-          .from<BacklogItem>('agent_backlog')
+          .from('agent_backlog')
           .insert({
             ...payload,
             created_by: 'human',
@@ -109,7 +109,7 @@ export default function BacklogPage({ items, error }: Props) {
       } else {
         // Update existing
         const { data, error: updateError } = await supabase
-          .from<BacklogItem>('agent_backlog')
+          .from('agent_backlog')
           .update(payload)
           .eq('id', editingId)
           .select()
@@ -301,7 +301,7 @@ export const getServerSideProps: GetServerSideProps<Props> = async () => {
   }
 
   const { data, error } = await supabase
-    .from<BacklogItem>('agent_backlog')
+    .from('agent_backlog')
     .select('*')
     .order('priority', { ascending: true })
     .order('created_at', { ascending: false });
