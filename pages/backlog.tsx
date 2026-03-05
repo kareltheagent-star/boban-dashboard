@@ -1,395 +1,315 @@
-import { useState, FormEvent } from 'react';
-import { GetServerSideProps } from 'next';
-import { supabase } from '../lib/supabaseClient';
+import { useState } from "react";
+import { GetServerSideProps } from "next";
+import { createClient } from "@supabase/supabase-js";
+
+type Status = "pending" | "in_progress" | "blocked" | "done";
 
 interface BacklogItem {
-  id: number;
+  id: string;
   title: string;
-  description: string | null;
+  description?: string;
   priority: number;
-  status: 'pending' | 'in_progress' | 'done' | 'blocked';
-  tags: string[] | null;
-  created_by: 'human' | 'boban';
+  status: Status;
+  created_by?: string;
+  tags?: string[];
+  notes?: string;
   created_at: string;
 }
 
 interface Props {
-  items: BacklogItem[];
-  error?: string;
+  initialItems: BacklogItem[];
 }
 
-export default function BacklogPage({ items, error }: Props) {
-  const [localItems, setLocalItems] = useState<BacklogItem[]>(items);
-  const [formError, setFormError] = useState<string | null>(null);
-  const [formLoading, setFormLoading] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
+const COLUMNS: { key: Status; label: string; color: string; dot: string }[] = [
+  { key: "pending",     label: "Pending",     color: "border-slate-600",  dot: "bg-slate-400" },
+  { key: "in_progress", label: "In Progress", color: "border-blue-500",   dot: "bg-blue-400" },
+  { key: "blocked",     label: "Blocked",     color: "border-red-500",    dot: "bg-red-400" },
+  { key: "done",        label: "Done",        color: "border-emerald-500",dot: "bg-emerald-400" },
+];
 
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [priority, setPriority] = useState<number>(3);
-  const [status, setStatus] = useState<BacklogItem['status']>('pending');
-  const [tags, setTags] = useState('');
+const PRIORITY_COLORS: Record<number, string> = {
+  1: "bg-red-500/20 text-red-300 ring-1 ring-red-500/40",
+  2: "bg-orange-500/20 text-orange-300 ring-1 ring-orange-500/40",
+  3: "bg-yellow-500/20 text-yellow-300 ring-1 ring-yellow-500/40",
+  4: "bg-blue-500/20 text-blue-300 ring-1 ring-blue-500/40",
+  5: "bg-slate-500/20 text-slate-400 ring-1 ring-slate-500/40",
+};
 
-  const resetForm = () => {
-    setEditingId(null);
-    setTitle('');
-    setDescription('');
-    setPriority(3);
-    setStatus('pending');
-    setTags('');
-    setFormError(null);
+export default function BacklogPage({ initialItems }: Props) {
+  const [items, setItems] = useState<BacklogItem[]>(initialItems);
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState<Status | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [editItem, setEditItem] = useState<BacklogItem | null>(null);
+  const [form, setForm] = useState({ title: "", description: "", priority: 3, status: "pending" as Status, tags: "", notes: "" });
+  const [saving, setSaving] = useState(false);
+
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+
+  const byStatus = (status: Status) =>
+    items.filter(i => i.status === status).sort((a, b) => a.priority - b.priority);
+
+  const handleDragStart = (id: string) => setDragging(id);
+  const handleDragEnd = () => { setDragging(null); setDragOver(null); };
+
+  const handleDrop = async (status: Status) => {
+    if (!dragging) return;
+    setDragOver(null);
+    const item = items.find(i => i.id === dragging);
+    if (!item || item.status === status) return;
+    setItems(prev => prev.map(i => i.id === dragging ? { ...i, status } : i));
+    await supabase.from("agent_backlog").update({ status }).eq("id", dragging);
+    setDragging(null);
   };
 
-  const onEdit = (item: BacklogItem) => {
-    setEditingId(item.id);
-    setTitle(item.title);
-    setDescription(item.description ?? '');
-    setPriority(item.priority);
-    setStatus(item.status);
-    setTags(item.tags ? item.tags.join(', ') : '');
-    setFormError(null);
+  const openEdit = (item: BacklogItem) => {
+    setEditItem(item);
+    setForm({
+      title: item.title,
+      description: item.description || "",
+      priority: item.priority,
+      status: item.status,
+      tags: (item.tags || []).join(", "),
+      notes: item.notes || "",
+    });
+    setShowForm(true);
   };
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    setFormError(null);
-
-    if (!supabase) {
-      setFormError('Supabase client not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.');
-      return;
-    }
-
-    if (!title.trim()) {
-      setFormError('Title is required');
-      return;
-    }
-
-    setFormLoading(true);
-
-    const payload: any = {
-      title: title.trim(),
-      description: description.trim() || null,
-      priority: Number(priority) || 3,
-      status,
-      tags: tags
-        .split(',')
-        .map((t) => t.trim())
-        .filter(Boolean),
+  const handleSubmit = async () => {
+    if (!form.title.trim()) return;
+    setSaving(true);
+    const payload = {
+      title: form.title,
+      description: form.description,
+      priority: form.priority,
+      status: form.status,
+      tags: form.tags.split(",").map(t => t.trim()).filter(Boolean),
+      notes: form.notes,
     };
-
-    if (!payload.tags.length) {
-      payload.tags = null;
+    if (editItem) {
+      await supabase.from("agent_backlog").update(payload).eq("id", editItem.id);
+      setItems(prev => prev.map(i => i.id === editItem.id ? { ...i, ...payload } : i));
+    } else {
+      const { data } = await supabase.from("agent_backlog").insert({ ...payload, created_by: "human" }).select().single();
+      if (data) setItems(prev => [...prev, data]);
     }
-
-    try {
-      if (editingId == null) {
-        // Create new
-        const { data, error: insertError } = await supabase
-          .from('agent_backlog')
-          .insert({
-            ...payload,
-            created_by: 'human',
-          })
-          .select()
-          .single();
-
-        if (insertError) {
-          setFormError(insertError.message);
-        } else if (data) {
-          setLocalItems((prev) =>
-            [...prev, data].sort((a, b) => {
-              if (a.priority === b.priority) {
-                return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-              }
-              return a.priority - b.priority;
-            })
-          );
-          resetForm();
-        }
-      } else {
-        // Update existing
-        const { data, error: updateError } = await supabase
-          .from('agent_backlog')
-          .update(payload)
-          .eq('id', editingId)
-          .select()
-          .single();
-
-        if (updateError) {
-          setFormError(updateError.message);
-        } else if (data) {
-          setLocalItems((prev) =>
-            prev
-              .map((item) => (item.id === editingId ? data : item))
-              .sort((a, b) => {
-                if (a.priority === b.priority) {
-                  return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-                }
-                return a.priority - b.priority;
-              })
-          );
-          resetForm();
-        }
-      }
-    } catch (err: any) {
-      setFormError(err.message ?? 'Unknown error while saving backlog item');
-    } finally {
-      setFormLoading(false);
-    }
+    setSaving(false);
+    setShowForm(false);
+    setEditItem(null);
+    setForm({ title: "", description: "", priority: 3, status: "pending", tags: "", notes: "" });
   };
 
-  if (error) {
-    return <p className="text-red-400 text-sm">{error}</p>;
-  }
-
-  const columns: { key: BacklogItem['status']; title: string }[] = [
-    { key: 'pending',      title: 'Pending' },
-    { key: 'in_progress',  title: 'In Progress' },
-    { key: 'blocked',      title: 'Blocked' },
-    { key: 'done',         title: 'Done' },
-  ];
-
-  const grouped: Record<BacklogItem['status'], BacklogItem[]> = {
-    pending: [],
-    in_progress: [],
-    done: [],
-    blocked: [],
+  const handleDelete = async (id: string) => {
+    await supabase.from("agent_backlog").delete().eq("id", id);
+    setItems(prev => prev.filter(i => i.id !== id));
+    setShowForm(false);
+    setEditItem(null);
   };
-
-  for (const item of localItems) {
-    grouped[item.status].push(item);
-  }
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-2">
-        <h1 className="text-xl font-semibold">Agent backlog</h1>
-        <p className="text-slate-400 text-sm">
-          Kanban view of tasks for Boban. Click a card to edit, or change its status to move columns.
-        </p>
+    <div style={{ fontFamily: "'JetBrains Mono', 'Fira Code', monospace" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Inter:wght@300;400;500;600&display=swap');
+        * { box-sizing: border-box; }
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+        .card-drag { cursor: grab; transition: all 0.15s ease; }
+        .card-drag:active { cursor: grabbing; transform: rotate(1deg) scale(1.02); }
+        .card-drag:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
+        .col-drop-active { background: rgba(99,102,241,0.05); border-color: rgba(99,102,241,0.4) !important; }
+        .input-dark { background: #0f172a; border: 1px solid #1e293b; color: #e2e8f0; padding: 8px 12px; border-radius: 6px; width: 100%; font-family: inherit; font-size: 13px; outline: none; transition: border-color 0.15s; }
+        .input-dark:focus { border-color: #6366f1; }
+        .input-dark::placeholder { color: #475569; }
+        .btn-primary { background: #6366f1; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 12px; font-weight: 500; letter-spacing: 0.05em; text-transform: uppercase; transition: all 0.15s; }
+        .btn-primary:hover { background: #4f46e5; }
+        .btn-ghost { background: transparent; color: #64748b; border: 1px solid #1e293b; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 12px; transition: all 0.15s; }
+        .btn-ghost:hover { color: #e2e8f0; border-color: #334155; }
+        .btn-danger { background: transparent; color: #f87171; border: 1px solid #1e293b; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 11px; transition: all 0.15s; }
+        .btn-danger:hover { background: rgba(239,68,68,0.1); border-color: #ef4444; }
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); z-index: 50; display: flex; align-items: center; justify-content: center; padding: 16px; }
+        .modal { background: #0f172a; border: 1px solid #1e293b; border-radius: 12px; padding: 24px; width: 100%; max-width: 520px; max-height: 90vh; overflow-y: auto; }
+        select.input-dark option { background: #0f172a; }
+      `}</style>
+
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: "#e2e8f0", letterSpacing: "-0.02em" }}>
+            Agent Backlog
+          </h1>
+          <p style={{ margin: "4px 0 0", fontSize: 12, color: "#475569" }}>
+            {items.length} tasks · drag to move between columns
+          </p>
+        </div>
+        <button className="btn-primary" onClick={() => { setEditItem(null); setForm({ title: "", description: "", priority: 3, status: "pending", tags: "", notes: "" }); setShowForm(true); }}>
+          + New Task
+        </button>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-3 rounded-lg border border-slate-800 p-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium">
-            {editingId == null ? 'Add backlog item' : `Edit backlog item #${editingId}`}
-          </h2>
-          {editingId != null && (
-            <button
-              type="button"
-              onClick={resetForm}
-              className="text-xs text-slate-400 hover:text-slate-200"
+      {/* Kanban Board */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, alignItems: "start" }}>
+        {COLUMNS.map(col => {
+          const colItems = byStatus(col.key);
+          return (
+            <div
+              key={col.key}
+              className={dragOver === col.key ? "col-drop-active" : ""}
+              onDragOver={e => { e.preventDefault(); setDragOver(col.key); }}
+              onDragLeave={() => setDragOver(null)}
+              onDrop={() => handleDrop(col.key)}
+              style={{
+                background: "#0b1120",
+                border: `1px solid`,
+                borderColor: dragOver === col.key ? "rgba(99,102,241,0.4)" : "#1e293b",
+                borderRadius: 10,
+                padding: 12,
+                minHeight: 200,
+                transition: "all 0.15s",
+              }}
             >
-              Cancel edit
-            </button>
-          )}
-        </div>
+              {/* Column Header */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                <span className={col.dot} style={{ width: 7, height: 7, borderRadius: "50%", display: "inline-block", flexShrink: 0 }} />
+                <span style={{ fontSize: 11, fontWeight: 600, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                  {col.label}
+                </span>
+                <span style={{ marginLeft: "auto", fontSize: 11, color: "#334155", background: "#1e293b", borderRadius: 10, padding: "1px 7px" }}>
+                  {colItems.length}
+                </span>
+              </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <label className="text-xs text-slate-400">Title</label>
-            <input
-              className="w-full rounded bg-slate-950 border border-slate-800 px-2 py-1 text-sm"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Short task title"
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs text-slate-400">Priority (1 = highest)</label>
-            <input
-              type="number"
-              min={1}
-              max={9}
-              className="w-full rounded bg-slate-950 border border-slate-800 px-2 py-1 text-sm"
-              value={priority}
-              onChange={(e) => setPriority(Number(e.target.value) || 3)}
-            />
-          </div>
-        </div>
+              {/* Cards */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {colItems.length === 0 && (
+                  <div style={{ textAlign: "center", padding: "20px 0", color: "#1e293b", fontSize: 12 }}>
+                    drop here
+                  </div>
+                )}
+                {colItems.map(item => (
+                  <div
+                    key={item.id}
+                    className="card-drag"
+                    draggable
+                    onDragStart={() => handleDragStart(item.id)}
+                    onDragEnd={handleDragEnd}
+                    onClick={() => openEdit(item)}
+                    style={{
+                      background: dragging === item.id ? "#1e293b" : "#111827",
+                      border: "1px solid #1e293b",
+                      borderRadius: 8,
+                      padding: "10px 12px",
+                      opacity: dragging === item.id ? 0.5 : 1,
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 6 }}>
+                      <span style={{ fontSize: 13, fontWeight: 500, color: "#e2e8f0", lineHeight: 1.4, fontFamily: "'Inter', sans-serif" }}>
+                        {item.title}
+                      </span>
+                      <span className={PRIORITY_COLORS[item.priority] || PRIORITY_COLORS[5]} style={{ fontSize: 10, fontWeight: 600, borderRadius: 4, padding: "2px 6px", flexShrink: 0 }}>
+                        P{item.priority}
+                      </span>
+                    </div>
+                    {item.description && (
+                      <p style={{ margin: "0 0 8px", fontSize: 11, color: "#475569", lineHeight: 1.5, fontFamily: "'Inter', sans-serif" }}>
+                        {item.description.slice(0, 80)}{item.description.length > 80 ? "…" : ""}
+                      </p>
+                    )}
+                    {item.tags && item.tags.length > 0 && (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 6 }}>
+                        {item.tags.map(tag => (
+                          <span key={tag} style={{ fontSize: 10, color: "#6366f1", background: "rgba(99,102,241,0.1)", borderRadius: 4, padding: "1px 6px", border: "1px solid rgba(99,102,241,0.2)" }}>
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <div style={{ fontSize: 10, color: "#334155", display: "flex", justifyContent: "space-between" }}>
+                      <span>{item.created_by || "system"}</span>
+                      <span>{new Date(item.created_at).toLocaleDateString("cs-CZ")}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
 
-        <div className="space-y-1">
-          <label className="text-xs text-slate-400">Description</label>
-          <textarea
-            className="w-full rounded bg-slate-950 border border-slate-800 px-2 py-1 text-sm min-h-[60px]"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Details, acceptance criteria, notes for Boban..."
-          />
-        </div>
+      {/* Modal */}
+      {showForm && (
+        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) { setShowForm(false); setEditItem(null); }}}>
+          <div className="modal">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "#e2e8f0" }}>
+                {editItem ? "Edit Task" : "New Task"}
+              </h2>
+              <button className="btn-ghost" onClick={() => { setShowForm(false); setEditItem(null); }} style={{ padding: "4px 10px" }}>✕</button>
+            </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <label className="text-xs text-slate-400">Status</label>
-            <select
-              className="w-full rounded bg-slate-950 border border-slate-800 px-2 py-1 text-sm"
-              value={status}
-              onChange={(e) => setStatus(e.target.value as BacklogItem['status'])}
-            >
-              <option value="pending">Pending</option>
-              <option value="in_progress">In progress</option>
-              <option value="blocked">Blocked</option>
-              <option value="done">Done</option>
-            </select>
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs text-slate-400">Tags (comma separated)</label>
-            <input
-              className="w-full rounded bg-slate-950 border border-slate-800 px-2 py-1 text-sm"
-              value={tags}
-              onChange={(e) => setTags(e.target.value)}
-              placeholder="infra, dashboard, experiment"
-            />
-          </div>
-        </div>
-
-        {formError && <p className="text-xs text-red-400">{formError}</p>}
-
-        <div className="flex justify-end gap-2 pt-1">
-          <button
-            type="submit"
-            disabled={formLoading}
-            className="px-3 py-1 rounded bg-slate-100 text-slate-900 text-xs font-medium hover:bg-white disabled:opacity-60"
-          >
-            {formLoading
-              ? editingId == null
-                ? 'Creating...'
-                : 'Saving...'
-              : editingId == null
-              ? 'Add item'
-              : 'Save changes'}
-          </button>
-        </div>
-      </form>
-
-      <div className="space-y-2">
-        <h2 className="text-sm font-medium">Kanban board</h2>
-        {localItems.length === 0 && (
-          <p className="text-slate-500 text-sm">No backlog items yet.</p>
-        )}
-        {localItems.length > 0 && (
-          <div className="grid gap-4 md:grid-cols-4">
-            {columns.map((col) => (
-              <div key={col.key} className="space-y-2">
-                <div className="text-xs font-medium text-slate-300">
-                  {col.title}
-                  <span className="text-slate-500"> ({grouped[col.key].length})</span>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 11, color: "#64748b", display: "block", marginBottom: 4 }}>TITLE *</label>
+                <input className="input-dark" placeholder="Task title" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label style={{ fontSize: 11, color: "#64748b", display: "block", marginBottom: 4 }}>PRIORITY</label>
+                  <select className="input-dark" value={form.priority} onChange={e => setForm(f => ({ ...f, priority: +e.target.value }))}>
+                    {[1,2,3,4,5].map(p => <option key={p} value={p}>P{p} {p===1?"(highest)":p===5?"(lowest)":""}</option>)}
+                  </select>
                 </div>
-                <div className="space-y-2">
-                  {grouped[col.key].map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => onEdit(item)}
-                      className="w-full text-left rounded-lg border border-slate-800 p-3 flex flex-col gap-1 hover:border-slate-600 bg-slate-950"
-                    >
-                      <div className="flex items-center justify-between text-sm">
-                        <div className="font-medium">{item.title}</div>
-                        <div className="text-xs text-slate-400 flex items-center gap-2">
-                          <span>prio {item.priority}</span>
-                        </div>
-                      </div>
-                      {item.description && (
-                        <div className="text-xs text-slate-300 line-clamp-2">{item.description}</div>
-                      )}
-                      <div className="flex justify-between text-[10px] text-slate-500 mt-1">
-                        <div>
-                          {item.tags && item.tags.length > 0 &&
-                            item.tags.map((t) => (
-                              <span
-                                key={t}
-                                className="inline-block mr-1 px-1 py-0.5 rounded bg-slate-800 text-slate-300"
-                              >
-                                {t}
-                              </span>
-                            ))}
-                        </div>
-                        <div>
-                          {item.created_by} · {new Date(item.created_at).toLocaleString()}
-                        </div>
-                      </div>
-
-                      <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400">
-                        <span>Status:</span>
-                        <select
-                          className="rounded bg-slate-950 border border-slate-800 px-1 py-0.5 text-[10px]"
-                          value={item.status}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={async (e) => {
-                            const nextStatus = e.target.value as BacklogItem['status'];
-                            if (!supabase || nextStatus === item.status) return;
-                            try {
-                              const { data, error: updateError } = await supabase
-                                .from('agent_backlog')
-                                .update({ status: nextStatus })
-                                .eq('id', item.id)
-                                .select()
-                                .single();
-
-                              if (!updateError && data) {
-                                setLocalItems((prev) =>
-                                  prev
-                                    .map((it) => (it.id === item.id ? data : it))
-                                    .sort((a, b) => {
-                                      if (a.priority === b.priority) {
-                                        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-                                      }
-                                      return a.priority - b.priority;
-                                    }),
-                                );
-                              }
-                            } catch {
-                              // ignore for now; form edit path is the fallback
-                            }
-                          }}
-                        >
-                          <option value="pending">Pending</option>
-                          <option value="in_progress">In progress</option>
-                          <option value="blocked">Blocked</option>
-                          <option value="done">Done</option>
-                        </select>
-                      </div>
-                    </button>
-                  ))}
+                <div>
+                  <label style={{ fontSize: 11, color: "#64748b", display: "block", marginBottom: 4 }}>STATUS</label>
+                  <select className="input-dark" value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as Status }))}>
+                    {COLUMNS.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+                  </select>
                 </div>
               </div>
-            ))}
+              <div>
+                <label style={{ fontSize: 11, color: "#64748b", display: "block", marginBottom: 4 }}>DESCRIPTION</label>
+                <textarea className="input-dark" placeholder="Details, acceptance criteria..." value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} style={{ minHeight: 80, resize: "vertical" }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: "#64748b", display: "block", marginBottom: 4 }}>TAGS</label>
+                <input className="input-dark" placeholder="infra, dashboard, api" value={form.tags} onChange={e => setForm(f => ({ ...f, tags: e.target.value }))} />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: "#64748b", display: "block", marginBottom: 4 }}>NOTES</label>
+                <textarea className="input-dark" placeholder="Additional notes..." value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} style={{ minHeight: 60, resize: "vertical" }} />
+              </div>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 20 }}>
+              <div>
+                {editItem && <button className="btn-danger" onClick={() => handleDelete(editItem.id)}>Delete</button>}
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button className="btn-ghost" onClick={() => { setShowForm(false); setEditItem(null); }}>Cancel</button>
+                <button className="btn-primary" onClick={handleSubmit} disabled={saving}>
+                  {saving ? "Saving..." : editItem ? "Save changes" : "Add task"}
+                </button>
+              </div>
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
 
-export const getServerSideProps: GetServerSideProps<Props> = async () => {
-  if (!supabase) {
-    return {
-      props: {
-        items: [],
-        error:
-          'Supabase client not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.',
-      },
-    };
-  }
-
-  const { data, error } = await supabase
-    .from('agent_backlog')
-    .select('*')
-    .order('priority', { ascending: true })
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    return {
-      props: {
-        items: [],
-        error: error.message,
-      },
-    };
-  }
-
-  return {
-    props: {
-      items: data ?? [],
-    },
-  };
+export const getServerSideProps: GetServerSideProps = async () => {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+  const { data } = await supabase
+    .from("agent_backlog")
+    .select("*")
+    .order("priority", { ascending: true })
+    .order("created_at", { ascending: false });
+  return { props: { initialItems: data || [] } };
 };
