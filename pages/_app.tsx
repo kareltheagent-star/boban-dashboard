@@ -11,16 +11,22 @@ export default function BobanDashboardApp({ Component, pageProps }: AppProps) {
         <title>Boban Dashboard</title>
       </Head>
       <AuthGate>
-        <div className="min-h-screen bg-slate-950 text-slate-100">
-          <header className="border-b border-slate-800 px-4 py-3 flex items-center justify-between">
-            <div className="font-mono text-sm text-slate-400">Boban Status Dashboard</div>
-            <nav className="space-x-4 text-sm">
-              <Link href="/" className="hover:text-sky-400">Status</Link>
-              <Link href="/backlog" className="hover:text-sky-400">Backlog</Link>
-              <Link href="/learning" className="hover:text-sky-400">Learning</Link>
+        <div className="min-h-screen bg-slate-950 text-slate-100 flex">
+          <aside className="w-56 border-r border-slate-800 px-4 py-4 flex flex-col gap-4">
+            <div className="font-mono text-sm text-slate-400">Boban Ops</div>
+            <nav className="space-y-2 text-sm">
+              <div>
+                <Link href="/" className="hover:text-sky-400">Status</Link>
+              </div>
+              <div>
+                <Link href="/backlog" className="hover:text-sky-400">Backlog</Link>
+              </div>
+              <div>
+                <Link href="/learning" className="hover:text-sky-400">Learning</Link>
+              </div>
             </nav>
-          </header>
-          <main className="px-4 py-4 max-w-5xl mx-auto">
+          </aside>
+          <main className="flex-1 px-4 py-4 max-w-5xl mx-auto">
             <Component {...pageProps} />
           </main>
         </div>

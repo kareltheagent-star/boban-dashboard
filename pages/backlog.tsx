@@ -142,12 +142,30 @@ export default function BacklogPage({ items, error }: Props) {
     return <p className="text-red-400 text-sm">{error}</p>;
   }
 
+  const columns: { key: BacklogItem['status']; title: string }[] = [
+    { key: 'pending',      title: 'Pending' },
+    { key: 'in_progress',  title: 'In Progress' },
+    { key: 'done',         title: 'Done' },
+    { key: 'blocked',      title: 'Blocked' },
+  ];
+
+  const grouped: Record<BacklogItem['status'], BacklogItem[]> = {
+    pending: [],
+    in_progress: [],
+    done: [],
+    blocked: [],
+  };
+
+  for (const item of localItems) {
+    grouped[item.status].push(item);
+  }
+
   return (
     <div className="space-y-6">
       <div className="space-y-2">
         <h1 className="text-xl font-semibold">Agent backlog</h1>
         <p className="text-slate-400 text-sm">
-          Manage tasks for Boban. Create new items or edit existing ones.
+          Kanban view of tasks for Boban. Click a card to edit, or change its status to move columns.
         </p>
       </div>
 
@@ -245,45 +263,99 @@ export default function BacklogPage({ items, error }: Props) {
       </form>
 
       <div className="space-y-2">
-        <h2 className="text-sm font-medium">Existing items</h2>
+        <h2 className="text-sm font-medium">Kanban board</h2>
         {localItems.length === 0 && (
           <p className="text-slate-500 text-sm">No backlog items yet.</p>
         )}
-        {localItems.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => onEdit(item)}
-            className="w-full text-left rounded-lg border border-slate-800 p-3 flex flex-col gap-1 hover:border-slate-600"
-          >
-            <div className="flex items-center justify-between text-sm">
-              <div className="font-medium">{item.title}</div>
-              <div className="text-xs text-slate-400 flex items-center gap-2">
-                <span>prio {item.priority}</span>
-                <span className="uppercase">{item.status}</span>
-              </div>
-            </div>
-            {item.description && (
-              <div className="text-xs text-slate-300 line-clamp-2">{item.description}</div>
-            )}
-            <div className="flex justify-between text-[10px] text-slate-500 mt-1">
-              <div>
-                {item.tags && item.tags.length > 0 &&
-                  item.tags.map((t) => (
-                    <span
-                      key={t}
-                      className="inline-block mr-1 px-1 py-0.5 rounded bg-slate-800 text-slate-300"
+        {localItems.length > 0 && (
+          <div className="grid gap-4 md:grid-cols-4">
+            {columns.map((col) => (
+              <div key={col.key} className="space-y-2">
+                <div className="text-xs font-medium text-slate-300">
+                  {col.title}
+                  <span className="text-slate-500"> ({grouped[col.key].length})</span>
+                </div>
+                <div className="space-y-2">
+                  {grouped[col.key].map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => onEdit(item)}
+                      className="w-full text-left rounded-lg border border-slate-800 p-3 flex flex-col gap-1 hover:border-slate-600 bg-slate-950"
                     >
-                      {t}
-                    </span>
+                      <div className="flex items-center justify-between text-sm">
+                        <div className="font-medium">{item.title}</div>
+                        <div className="text-xs text-slate-400 flex items-center gap-2">
+                          <span>prio {item.priority}</span>
+                        </div>
+                      </div>
+                      {item.description && (
+                        <div className="text-xs text-slate-300 line-clamp-2">{item.description}</div>
+                      )}
+                      <div className="flex justify-between text-[10px] text-slate-500 mt-1">
+                        <div>
+                          {item.tags && item.tags.length > 0 &&
+                            item.tags.map((t) => (
+                              <span
+                                key={t}
+                                className="inline-block mr-1 px-1 py-0.5 rounded bg-slate-800 text-slate-300"
+                              >
+                                {t}
+                              </span>
+                            ))}
+                        </div>
+                        <div>
+                          {item.created_by} · {new Date(item.created_at).toLocaleString()}
+                        </div>
+                      </div>
+
+                      <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400">
+                        <span>Status:</span>
+                        <select
+                          className="rounded bg-slate-950 border border-slate-800 px-1 py-0.5 text-[10px]"
+                          value={item.status}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={async (e) => {
+                            const nextStatus = e.target.value as BacklogItem['status'];
+                            if (!supabase || nextStatus === item.status) return;
+                            try {
+                              const { data, error: updateError } = await supabase
+                                .from('agent_backlog')
+                                .update({ status: nextStatus })
+                                .eq('id', item.id)
+                                .select()
+                                .single();
+
+                              if (!updateError && data) {
+                                setLocalItems((prev) =>
+                                  prev
+                                    .map((it) => (it.id === item.id ? data : it))
+                                    .sort((a, b) => {
+                                      if (a.priority === b.priority) {
+                                        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+                                      }
+                                      return a.priority - b.priority;
+                                    }),
+                                );
+                              }
+                            } catch {
+                              // ignore for now; form edit path is the fallback
+                            }
+                          }}
+                        >
+                          <option value="pending">Pending</option>
+                          <option value="in_progress">In progress</option>
+                          <option value="blocked">Blocked</option>
+                          <option value="done">Done</option>
+                        </select>
+                      </div>
+                    </button>
                   ))}
+                </div>
               </div>
-              <div>
-                {item.created_by} · {new Date(item.created_at).toLocaleString()}
-              </div>
-            </div>
-          </button>
-        ))}
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
