@@ -50,6 +50,26 @@ interface LearningItem {
   created_at: string;
 }
 
+// ── Design tokens ──────────────────────────────────────────────────────────
+// "Midnight navy" palette — noticeably lighter than pure-black, blue-tinted
+const C = {
+  pageBg:     "#0d1526",  // page wrapper
+  cardBg:     "#17243a",  // main cards
+  colBg:      "#0f1c2e",  // kanban column background
+  itemBg:     "#1c2d42",  // kanban card / learning item
+  itemBgHov:  "#253550",  // dragging state
+  border:     "#263a55",  // primary border
+  borderSub:  "#1e3050",  // subtle border
+  skeleton:   "#263a55",  // loading skeleton
+  inputBg:    "#111e30",  // form inputs & modals
+  deepBg:     "#0b1422",  // very deep (add-form bg)
+  badgeBg:    "#18283d",  // small badges
+  textMain:   "#dde9f8",  // primary text (slight blue tint)
+  textSec:    "#7a9ab8",  // secondary text
+  textMuted:  "#4d6a85",  // muted / labels
+  textLabel:  "#556e89",  // uppercase section labels
+};
+
 // ── Constants ──────────────────────────────────────────────────────────────
 const KANBAN_COLUMNS: { key: BacklogStatus; label: string; dot: string }[] = [
   { key: "pending",     label: "Pending",     dot: "#94a3b8" },
@@ -58,12 +78,14 @@ const KANBAN_COLUMNS: { key: BacklogStatus; label: string; dot: string }[] = [
   { key: "done",        label: "Done",        dot: "#34d399" },
 ];
 
+const COL_LIMIT = 5;
+
 const PRIORITY_BADGE: Record<number, CSSProperties> = {
-  1: { background: "rgba(239,68,68,0.2)",   color: "#fca5a5", outline: "1px solid rgba(239,68,68,0.4)" },
-  2: { background: "rgba(249,115,22,0.2)",  color: "#fdba74", outline: "1px solid rgba(249,115,22,0.4)" },
-  3: { background: "rgba(234,179,8,0.2)",   color: "#fde047", outline: "1px solid rgba(234,179,8,0.4)" },
-  4: { background: "rgba(59,130,246,0.2)",  color: "#93c5fd", outline: "1px solid rgba(59,130,246,0.4)" },
-  5: { background: "rgba(100,116,139,0.2)", color: "#94a3b8", outline: "1px solid rgba(100,116,139,0.4)" },
+  1: { background: "rgba(239,68,68,0.22)",   color: "#fca5a5", outline: "1px solid rgba(239,68,68,0.4)" },
+  2: { background: "rgba(249,115,22,0.22)",  color: "#fdba74", outline: "1px solid rgba(249,115,22,0.4)" },
+  3: { background: "rgba(234,179,8,0.22)",   color: "#fde047", outline: "1px solid rgba(234,179,8,0.4)" },
+  4: { background: "rgba(59,130,246,0.22)",  color: "#93c5fd", outline: "1px solid rgba(59,130,246,0.4)" },
+  5: { background: "rgba(100,116,139,0.22)", color: "#94a3b8", outline: "1px solid rgba(100,116,139,0.4)" },
 };
 
 const BLANK_TASK: { title: string; description: string; priority: number; status: BacklogStatus; tags: string; notes: string } = {
@@ -95,20 +117,19 @@ function gaugeLevel(val: number | null, warnAt: number, dangerAt: number): "ok" 
 }
 
 // ── Shared style helpers ───────────────────────────────────────────────────
-// Slightly lighter card background (slate-900) vs previous slate-950
 function makeCard(glow?: "ok" | "warn" | "danger"): CSSProperties {
   const borderColor =
-    glow === "ok"     ? "rgba(52,211,153,0.3)"  :
-    glow === "warn"   ? "rgba(250,204,21,0.3)"   :
-    glow === "danger" ? "rgba(239,68,68,0.4)"    :
-    "#1e293b";
+    glow === "ok"     ? "rgba(52,211,153,0.35)"  :
+    glow === "warn"   ? "rgba(250,204,21,0.35)"   :
+    glow === "danger" ? "rgba(239,68,68,0.45)"    :
+    C.border;
   const shadow =
-    glow === "ok"     ? "0 0 18px rgba(52,211,153,0.12)"  :
-    glow === "warn"   ? "0 0 18px rgba(250,204,21,0.10)"  :
-    glow === "danger" ? "0 0 18px rgba(239,68,68,0.15)"   :
+    glow === "ok"     ? "0 0 20px rgba(52,211,153,0.1)"  :
+    glow === "warn"   ? "0 0 20px rgba(250,204,21,0.09)" :
+    glow === "danger" ? "0 0 20px rgba(239,68,68,0.12)"  :
     "none";
   return {
-    background: "#0f172a",
+    background: C.cardBg,
     border: `1px solid ${borderColor}`,
     borderRadius: 12,
     padding: 18,
@@ -125,12 +146,12 @@ const labelSt: CSSProperties = {
   fontWeight: 600,
   letterSpacing: "0.08em",
   textTransform: "uppercase",
-  color: "#475569",
+  color: C.textMuted,
   marginBottom: 5,
 };
 
 const btnPrimary: CSSProperties = {
-  background: "#6366f1",
+  background: "#5b5ef4",
   color: "#fff",
   border: "none",
   padding: "8px 16px",
@@ -143,8 +164,8 @@ const btnPrimary: CSSProperties = {
 
 const btnGhost: CSSProperties = {
   background: "transparent",
-  color: "#64748b",
-  border: "1px solid #1e293b",
+  color: C.textSec,
+  border: `1px solid ${C.border}`,
   padding: "8px 16px",
   borderRadius: 6,
   cursor: "pointer",
@@ -154,11 +175,24 @@ const btnGhost: CSSProperties = {
 const btnDanger: CSSProperties = {
   background: "transparent",
   color: "#f87171",
-  border: "1px solid #1e293b",
+  border: `1px solid ${C.border}`,
   padding: "7px 13px",
   borderRadius: 6,
   cursor: "pointer",
   fontSize: 12,
+};
+
+const btnShowMore: CSSProperties = {
+  width: "100%",
+  background: "transparent",
+  border: `1px dashed ${C.border}`,
+  borderRadius: 6,
+  padding: "6px 0",
+  cursor: "pointer",
+  fontSize: 11,
+  color: C.textSec,
+  textAlign: "center",
+  marginTop: 2,
 };
 
 // ── MetricCard ─────────────────────────────────────────────────────────────
@@ -176,15 +210,15 @@ function MetricCard({
   const valColor =
     level === "danger" ? "#f87171" :
     level === "warn"   ? "#fde047" :
-    "#f1f5f9";
+    C.textMain;
 
   return (
     <div style={makeCard(level || undefined)}>
-      <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.09em", textTransform: "uppercase", color: "#64748b", marginBottom: 10 }}>
+      <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.09em", textTransform: "uppercase", color: C.textMuted, marginBottom: 10 }}>
         {label}
       </div>
       {loading ? (
-        <div style={{ height: 40, borderRadius: 6, background: "#1e293b", marginBottom: 10 }} />
+        <div style={{ height: 40, borderRadius: 6, background: C.skeleton, marginBottom: 10 }} />
       ) : (
         <div style={{
           fontSize: 36,
@@ -221,6 +255,9 @@ export default function HomePage() {
   // Kanban state
   const [dragging, setDragging] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<BacklogStatus | null>(null);
+  const [colExpanded, setColExpanded] = useState<Record<BacklogStatus, boolean>>({
+    pending: false, in_progress: false, blocked: false, done: false,
+  });
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [editTask, setEditTask] = useState<BacklogItem | null>(null);
   const [taskForm, setTaskForm] = useState(BLANK_TASK);
@@ -382,18 +419,11 @@ export default function HomePage() {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <AuthGate>
-      <div style={{ minHeight: "100vh", background: "#020617", color: "#e2e8f0", fontFamily: "var(--font-inter, 'Inter', system-ui, sans-serif)", fontSize: 15 }}>
+      <div style={{ minHeight: "100vh", background: C.pageBg, color: C.textMain, fontFamily: "var(--font-inter, 'Inter', system-ui, sans-serif)", fontSize: 15 }}>
 
         {/* OAuth expiry warning banner */}
         {oauthWarn && (
-          <div style={{
-            background: "rgba(239,68,68,0.15)",
-            borderBottom: "1px solid rgba(239,68,68,0.4)",
-            padding: "12px 28px",
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-          }}>
+          <div style={{ background: "rgba(239,68,68,0.15)", borderBottom: "1px solid rgba(239,68,68,0.4)", padding: "12px 28px", display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ color: "#fca5a5", fontSize: 14, fontWeight: 600 }}>
               ⚠️ OAuth token expires in {agentStatus!.oauth_expires_days!.toFixed(1)} days — renew now!
             </span>
@@ -402,53 +432,36 @@ export default function HomePage() {
 
         <div style={{ maxWidth: 1440, margin: "0 auto", padding: "22px 28px", display: "flex", flexDirection: "column", gap: 22 }}>
 
-          {/* ── HEADER ─────────────────────────────────────────────────────── */}
+          {/* ── HEADER ───────────────────────────────────────────────────── */}
           <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, letterSpacing: "-0.03em", color: "#f1f5f9" }}>
+            <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, letterSpacing: "-0.03em", color: C.textMain }}>
               Boban 🤖
             </h1>
             <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
               {agentStatus && (
                 <span style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  borderRadius: 999,
-                  padding: "6px 16px",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  background: agentStatus.gateway_running
-                    ? "rgba(16,185,129,0.15)"
-                    : "rgba(239,68,68,0.15)",
+                  display: "inline-flex", alignItems: "center", gap: 8,
+                  borderRadius: 999, padding: "6px 16px", fontSize: 13, fontWeight: 600,
+                  background: agentStatus.gateway_running ? "rgba(52,211,153,0.12)" : "rgba(239,68,68,0.12)",
                   color: agentStatus.gateway_running ? "#34d399" : "#f87171",
                   border: `1px solid ${agentStatus.gateway_running ? "rgba(52,211,153,0.35)" : "rgba(239,68,68,0.35)"}`,
-                  boxShadow: agentStatus.gateway_running
-                    ? "0 0 12px rgba(52,211,153,0.12)"
-                    : "0 0 12px rgba(239,68,68,0.12)",
+                  boxShadow: agentStatus.gateway_running ? "0 0 12px rgba(52,211,153,0.1)" : "0 0 12px rgba(239,68,68,0.1)",
                 }}>
                   <span
                     className={agentStatus.gateway_running ? "pulse-dot" : ""}
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: "50%",
-                      background: "currentColor",
-                      flexShrink: 0,
-                      display: "inline-block",
-                    }}
+                    style={{ width: 8, height: 8, borderRadius: "50%", background: "currentColor", flexShrink: 0, display: "inline-block" }}
                   />
                   {agentStatus.gateway_running ? "Gateway running" : "Gateway stopped"}
                 </span>
               )}
               {lastUpdated && (
-                <span style={{ fontSize: 12, color: "#475569", fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)" }}>
+                <span style={{ fontSize: 12, color: C.textMuted, fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)" }}>
                   updated {lastUpdated.toLocaleTimeString()}
                 </span>
               )}
             </div>
           </header>
 
-          {/* Supabase / general errors */}
           {!supabase && (
             <div style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 8, padding: "13px 18px", fontSize: 14, color: "#fcd34d" }}>
               Supabase client not configured. Set{" "}
@@ -462,67 +475,36 @@ export default function HomePage() {
             </div>
           )}
 
-          {/* ── METRICS ROW ────────────────────────────────────────────────── */}
+          {/* ── METRICS ROW ──────────────────────────────────────────────── */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
-            <MetricCard
-              label="RAM"
-              value={agentStatus?.mac_ram_pct != null ? `${agentStatus.mac_ram_pct.toFixed(1)}%` : "—"}
-              gaugeVal={agentStatus?.mac_ram_pct ?? null}
-              warnAt={70} dangerAt={90} loading={loading}
-            />
-            <MetricCard
-              label="CPU"
-              value={agentStatus?.mac_cpu_pct != null ? `${agentStatus.mac_cpu_pct.toFixed(1)}%` : "—"}
-              gaugeVal={agentStatus?.mac_cpu_pct ?? null}
-              warnAt={70} dangerAt={90} loading={loading}
-            />
-            <MetricCard
-              label="Disk"
-              value={agentStatus?.mac_disk_pct != null ? `${agentStatus.mac_disk_pct.toFixed(1)}%` : "—"}
-              gaugeVal={agentStatus?.mac_disk_pct ?? null}
-              warnAt={80} dangerAt={95} loading={loading}
-            />
-            {/* OAuth card — matches MetricCard layout */}
+            <MetricCard label="RAM"  value={agentStatus?.mac_ram_pct  != null ? `${agentStatus.mac_ram_pct.toFixed(1)}%`  : "—"} gaugeVal={agentStatus?.mac_ram_pct  ?? null} warnAt={70} dangerAt={90} loading={loading} />
+            <MetricCard label="CPU"  value={agentStatus?.mac_cpu_pct  != null ? `${agentStatus.mac_cpu_pct.toFixed(1)}%`  : "—"} gaugeVal={agentStatus?.mac_cpu_pct  ?? null} warnAt={70} dangerAt={90} loading={loading} />
+            <MetricCard label="Disk" value={agentStatus?.mac_disk_pct != null ? `${agentStatus.mac_disk_pct.toFixed(1)}%` : "—"} gaugeVal={agentStatus?.mac_disk_pct ?? null} warnAt={80} dangerAt={95} loading={loading} />
             <div style={makeCard(oauthWarn ? "danger" : undefined)}>
-              <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.09em", textTransform: "uppercase", color: "#64748b", marginBottom: 10 }}>
-                OAuth Expiry
-              </div>
+              <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.09em", textTransform: "uppercase", color: C.textMuted, marginBottom: 10 }}>OAuth Expiry</div>
               {loading ? (
-                <div style={{ height: 40, borderRadius: 6, background: "#1e293b", marginBottom: 10 }} />
+                <div style={{ height: 40, borderRadius: 6, background: C.skeleton, marginBottom: 10 }} />
               ) : (
-                <div style={{
-                  fontSize: 36,
-                  fontWeight: 700,
-                  letterSpacing: "-0.03em",
-                  fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
-                  color: oauthWarn ? "#f87171" : "#f1f5f9",
-                  marginBottom: 12,
-                  lineHeight: 1,
-                }}>
-                  {agentStatus?.oauth_expires_days != null
-                    ? `${agentStatus.oauth_expires_days.toFixed(1)}d`
-                    : "—"}
+                <div style={{ fontSize: 36, fontWeight: 700, letterSpacing: "-0.03em", fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)", color: oauthWarn ? "#f87171" : C.textMain, marginBottom: 12, lineHeight: 1 }}>
+                  {agentStatus?.oauth_expires_days != null ? `${agentStatus.oauth_expires_days.toFixed(1)}d` : "—"}
                 </div>
               )}
-              <div style={{ fontSize: 11, color: oauthWarn ? "#f87171" : "#475569", fontWeight: oauthWarn ? 600 : 400 }}>
+              <div style={{ fontSize: 11, color: oauthWarn ? "#f87171" : C.textMuted, fontWeight: oauthWarn ? 600 : 400 }}>
                 {oauthWarn ? "⚠ renew soon" : "days remaining"}
               </div>
             </div>
           </div>
 
-          {/* ── TWO COLUMN SECTION ──────────────────────────────────────────── */}
+          {/* ── TWO COLUMN SECTION ───────────────────────────────────────── */}
           <div style={{ display: "grid", gridTemplateColumns: "3fr 2fr", gap: 18, alignItems: "start" }}>
 
             {/* LEFT: Kanban board */}
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: "#475569" }}>
+                <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: C.textMuted }}>
                   Backlog · {backlogItems.length} tasks
                 </span>
-                <button
-                  style={btnPrimary}
-                  onClick={() => { setEditTask(null); setTaskForm(BLANK_TASK); setShowTaskForm(true); }}
-                >
+                <button style={btnPrimary} onClick={() => { setEditTask(null); setTaskForm(BLANK_TASK); setShowTaskForm(true); }}>
                   + New Task
                 </button>
               </div>
@@ -531,6 +513,10 @@ export default function HomePage() {
                 {KANBAN_COLUMNS.map(col => {
                   const colItems = byStatus(col.key);
                   const isOver = dragOver === col.key;
+                  const expanded = colExpanded[col.key];
+                  const visible = expanded ? colItems : colItems.slice(0, COL_LIMIT);
+                  const hiddenCount = colItems.length - COL_LIMIT;
+
                   return (
                     <div
                       key={col.key}
@@ -538,31 +524,33 @@ export default function HomePage() {
                       onDragLeave={() => setDragOver(null)}
                       onDrop={() => handleDrop(col.key)}
                       style={{
-                        background: isOver ? "rgba(99,102,241,0.07)" : "#080f1f",
-                        border: `1px solid ${isOver ? "rgba(99,102,241,0.45)" : "#1a2540"}`,
+                        background: isOver ? "rgba(91,94,244,0.08)" : C.colBg,
+                        border: `1px solid ${isOver ? "rgba(91,94,244,0.5)" : C.borderSub}`,
                         borderRadius: 10,
                         padding: 12,
                         minHeight: 140,
                         transition: "all 0.12s",
                       }}
                     >
+                      {/* Column header */}
                       <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
                         <span style={{ width: 7, height: 7, borderRadius: "50%", background: col.dot, display: "inline-block", flexShrink: 0 }} />
-                        <span style={{ fontSize: 11, fontWeight: 600, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: C.textLabel, textTransform: "uppercase", letterSpacing: "0.08em" }}>
                           {col.label}
                         </span>
-                        <span style={{ marginLeft: "auto", fontSize: 11, color: "#475569", background: "#111827", borderRadius: 6, padding: "1px 7px" }}>
+                        <span style={{ marginLeft: "auto", fontSize: 11, color: C.textSec, background: C.badgeBg, borderRadius: 6, padding: "1px 7px" }}>
                           {colItems.length}
                         </span>
                       </div>
 
+                      {/* Cards */}
                       <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                         {colItems.length === 0 && (
-                          <div style={{ textAlign: "center", padding: "16px 0", color: "#1e293b", fontSize: 12 }}>
+                          <div style={{ textAlign: "center", padding: "16px 0", color: C.borderSub, fontSize: 12 }}>
                             drop here
                           </div>
                         )}
-                        {colItems.map(item => (
+                        {visible.map(item => (
                           <div
                             key={item.id}
                             draggable
@@ -570,8 +558,8 @@ export default function HomePage() {
                             onDragEnd={() => { setDragging(null); setDragOver(null); }}
                             onClick={() => openEditTask(item)}
                             style={{
-                              background: dragging === item.id ? "#1e293b" : "#0f172a",
-                              border: "1px solid #1a2540",
+                              background: dragging === item.id ? C.itemBgHov : C.itemBg,
+                              border: `1px solid ${C.border}`,
                               borderRadius: 8,
                               padding: "11px 13px",
                               opacity: dragging === item.id ? 0.45 : 1,
@@ -580,7 +568,7 @@ export default function HomePage() {
                             }}
                           >
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 6, marginBottom: 5 }}>
-                              <span style={{ fontSize: 14, fontWeight: 500, color: "#e2e8f0", lineHeight: 1.45, flex: 1 }}>
+                              <span style={{ fontSize: 14, fontWeight: 500, color: C.textMain, lineHeight: 1.45, flex: 1 }}>
                                 {fixText(item.title)}
                               </span>
                               <span style={{ fontSize: 10, fontWeight: 600, borderRadius: 4, padding: "2px 6px", flexShrink: 0, ...(PRIORITY_BADGE[item.priority] ?? PRIORITY_BADGE[5]) }}>
@@ -588,14 +576,14 @@ export default function HomePage() {
                               </span>
                             </div>
                             {item.description && (
-                              <p style={{ margin: "0 0 6px", fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>
+                              <p style={{ margin: "0 0 6px", fontSize: 12, color: C.textSec, lineHeight: 1.5 }}>
                                 {fixText(item.description).slice(0, 70)}{item.description.length > 70 ? "…" : ""}
                               </p>
                             )}
                             {item.tags && item.tags.length > 0 && (
                               <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                                 {item.tags.map(tag => (
-                                  <span key={tag} style={{ fontSize: 10, color: "#818cf8", background: "rgba(99,102,241,0.12)", borderRadius: 4, padding: "2px 6px", border: "1px solid rgba(99,102,241,0.2)" }}>
+                                  <span key={tag} style={{ fontSize: 10, color: "#818cf8", background: "rgba(99,102,241,0.14)", borderRadius: 4, padding: "2px 6px", border: "1px solid rgba(99,102,241,0.25)" }}>
                                     {tag}
                                   </span>
                                 ))}
@@ -603,6 +591,18 @@ export default function HomePage() {
                             )}
                           </div>
                         ))}
+
+                        {/* Show more / less toggle */}
+                        {colItems.length > COL_LIMIT && (
+                          <button
+                            style={btnShowMore}
+                            onClick={() => setColExpanded(prev => ({ ...prev, [col.key]: !prev[col.key] }))}
+                          >
+                            {expanded
+                              ? `↑ Show less`
+                              : `↓ ${hiddenCount} more`}
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -615,24 +615,24 @@ export default function HomePage() {
 
               {/* Current task card */}
               <div style={card}>
-                <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "#475569", marginBottom: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: C.textMuted, marginBottom: 12 }}>
                   Current Task
                 </div>
                 {loading ? (
-                  <div style={{ height: 64, borderRadius: 6, background: "#1e293b" }} />
+                  <div style={{ height: 64, borderRadius: 6, background: C.skeleton }} />
                 ) : (
                   <>
-                    <p style={{ margin: "0 0 8px", fontSize: 17, fontWeight: 600, color: "#f1f5f9", lineHeight: 1.5 }}>
+                    <p style={{ margin: "0 0 8px", fontSize: 17, fontWeight: 600, color: C.textMain, lineHeight: 1.5 }}>
                       {fixText(activeTask?.title || agentStatus?.current_task || "Idle")}
                     </p>
                     {activeTask && (
-                      <p style={{ margin: 0, fontSize: 13, color: "#64748b" }}>
+                      <p style={{ margin: 0, fontSize: 13, color: C.textSec }}>
                         P{activeTask.priority} · {activeTask.status.replace("_", " ")}
                         {activeTask.created_by ? ` · ${activeTask.created_by}` : ""}
                       </p>
                     )}
                     {agentStatus?.last_message && (
-                      <p style={{ margin: "8px 0 0", fontSize: 13, color: "#64748b", lineHeight: 1.55, borderTop: "1px solid #1e293b", paddingTop: 8 }}>
+                      <p style={{ margin: "8px 0 0", fontSize: 13, color: C.textSec, lineHeight: 1.55, borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
                         {fixText(agentStatus.last_message)}
                       </p>
                     )}
@@ -642,33 +642,28 @@ export default function HomePage() {
 
               {/* Last 5 events */}
               <div style={card}>
-                <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "#475569", marginBottom: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: C.textMuted, marginBottom: 12 }}>
                   Recent Events
                 </div>
                 {loading ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-                    {[0, 1, 2].map(i => (
-                      <div key={i} style={{ height: 32, borderRadius: 4, background: "#1e293b" }} />
-                    ))}
+                    {[0, 1, 2].map(i => <div key={i} style={{ height: 32, borderRadius: 4, background: C.skeleton }} />)}
                   </div>
                 ) : events.length === 0 ? (
-                  <p style={{ fontSize: 14, color: "#475569", margin: 0 }}>No recent events.</p>
+                  <p style={{ fontSize: 14, color: C.textMuted, margin: 0 }}>No recent events.</p>
                 ) : (
                   <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 11 }}>
                     {events.map(evt => (
-                      <li
-                        key={evt.id ?? `${evt.type}-${evt.ts}`}
-                        style={{ borderLeft: "2px solid #1e293b", paddingLeft: 12, display: "flex", flexDirection: "column", gap: 3 }}
-                      >
+                      <li key={evt.id ?? `${evt.type}-${evt.ts}`} style={{ borderLeft: `2px solid ${C.border}`, paddingLeft: 12, display: "flex", flexDirection: "column", gap: 3 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
-                          <span style={{ fontSize: 11, color: "#475569", fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)" }}>
+                          <span style={{ fontSize: 11, color: C.textMuted, fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)" }}>
                             {new Date(evt.ts).toLocaleString()}
                           </span>
-                          <span style={{ fontSize: 10, background: "#111827", color: "#64748b", borderRadius: 4, padding: "2px 7px", textTransform: "uppercase", letterSpacing: "0.06em", flexShrink: 0 }}>
+                          <span style={{ fontSize: 10, background: C.badgeBg, color: C.textSec, borderRadius: 4, padding: "2px 7px", textTransform: "uppercase", letterSpacing: "0.06em", flexShrink: 0 }}>
                             {evt.type}
                           </span>
                         </div>
-                        <p style={{ margin: 0, fontSize: 14, color: "#cbd5e1", lineHeight: 1.5 }}>
+                        <p style={{ margin: 0, fontSize: 14, color: C.textMain, lineHeight: 1.5 }}>
                           {fixText(evt.message)}
                         </p>
                       </li>
@@ -679,56 +674,41 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* ── LEARNING SECTION ─────────────────────────────────────────────── */}
-          <div style={{ border: "1px solid #1a2540", borderRadius: 12, overflow: "hidden" }}>
+          {/* ── LEARNING SECTION ─────────────────────────────────────────── */}
+          <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
             <button
               onClick={() => setLearningExpanded(v => !v)}
-              style={{
-                width: "100%",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "16px 20px",
-                background: "transparent",
-                border: "none",
-                cursor: "pointer",
-                color: "#94a3b8",
-                textAlign: "left",
-                minHeight: 56,
-              }}
+              style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", background: "transparent", border: "none", cursor: "pointer", color: C.textSec, textAlign: "left", minHeight: 56 }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: "#64748b" }}>
+                <span style={{ fontSize: 13, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: C.textLabel }}>
                   📚 Learning Backlog
                 </span>
-                <span style={{ fontSize: 12, color: "#475569", background: "#111827", borderRadius: 6, padding: "3px 10px", border: "1px solid #1a2540" }}>
+                <span style={{ fontSize: 12, color: C.textSec, background: C.badgeBg, borderRadius: 6, padding: "3px 10px", border: `1px solid ${C.borderSub}` }}>
                   {pendingLearn} pending
                 </span>
-                <span style={{ fontSize: 12, color: "#34d399", background: "rgba(52,211,153,0.08)", borderRadius: 6, padding: "3px 10px", border: "1px solid rgba(52,211,153,0.2)" }}>
+                <span style={{ fontSize: 12, color: "#34d399", background: "rgba(52,211,153,0.1)", borderRadius: 6, padding: "3px 10px", border: "1px solid rgba(52,211,153,0.25)" }}>
                   {doneLearn} done
                 </span>
               </div>
-              <span style={{ fontSize: 12, color: "#475569", transform: learningExpanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", display: "inline-block" }}>
+              <span style={{ fontSize: 12, color: C.textMuted, transform: learningExpanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", display: "inline-block" }}>
                 ▼
               </span>
             </button>
 
             {learningExpanded && (
-              <div style={{ borderTop: "1px solid #1a2540", padding: 20 }}>
+              <div style={{ borderTop: `1px solid ${C.border}`, padding: 20 }}>
                 <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
                   <button
                     onClick={() => { setShowAddLearn(v => !v); setLearnError(null); }}
-                    style={showAddLearn ? { ...btnGhost, color: "#e2e8f0", borderColor: "#334155" } : btnGhost}
+                    style={showAddLearn ? { ...btnGhost, color: C.textMain, borderColor: C.border } : btnGhost}
                   >
                     {showAddLearn ? "Cancel" : "+ Add topic"}
                   </button>
                 </div>
 
                 {showAddLearn && (
-                  <form
-                    onSubmit={handleAddLearn}
-                    style={{ background: "#080f1f", border: "1px solid #1a2540", borderRadius: 10, padding: 18, marginBottom: 18, display: "flex", flexDirection: "column", gap: 12 }}
-                  >
+                  <form onSubmit={handleAddLearn} style={{ background: C.deepBg, border: `1px solid ${C.borderSub}`, borderRadius: 10, padding: 18, marginBottom: 18, display: "flex", flexDirection: "column", gap: 12 }}>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                       <div>
                         <label style={labelSt}>Topic *</label>
@@ -769,39 +749,35 @@ export default function HomePage() {
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
                   {learningItems.length === 0 && (
-                    <p style={{ fontSize: 14, color: "#475569", margin: 0 }}>No learning items yet.</p>
+                    <p style={{ fontSize: 14, color: C.textMuted, margin: 0 }}>No learning items yet.</p>
                   )}
                   {learningItems.map(item => {
                     const isDone = item.status === "done";
                     const statusColor =
-                      isDone                       ? "#34d399" :
+                      isDone                        ? "#34d399" :
                       item.status === "in_progress" ? "#60a5fa" :
                       item.status === "blocked"     ? "#f87171" :
-                      "#64748b";
+                      C.textSec;
                     const statusBg =
-                      isDone                       ? "rgba(52,211,153,0.1)" :
-                      item.status === "in_progress" ? "rgba(96,165,250,0.1)" :
-                      item.status === "blocked"     ? "rgba(248,113,113,0.1)" :
-                      "rgba(100,116,139,0.08)";
+                      isDone                        ? "rgba(52,211,153,0.12)" :
+                      item.status === "in_progress" ? "rgba(96,165,250,0.12)" :
+                      item.status === "blocked"     ? "rgba(248,113,113,0.12)" :
+                      "rgba(100,116,139,0.1)";
                     return (
-                      <div key={item.id} style={{ background: "#080f1f", border: "1px solid #1a2540", borderRadius: 9, padding: "12px 16px", display: "flex", flexDirection: "column", gap: 5 }}>
+                      <div key={item.id} style={{ background: C.itemBg, border: `1px solid ${C.border}`, borderRadius: 9, padding: "12px 16px", display: "flex", flexDirection: "column", gap: 5 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-                          <span style={{ fontSize: 14, fontWeight: 500, color: isDone ? "#475569" : "#e2e8f0", textDecoration: isDone ? "line-through" : "none", flex: 1 }}>
+                          <span style={{ fontSize: 14, fontWeight: 500, color: isDone ? C.textMuted : C.textMain, textDecoration: isDone ? "line-through" : "none", flex: 1 }}>
                             {fixText(item.topic)}
                           </span>
                           <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
-                            <span style={{ fontSize: 11, color: "#475569" }}>P{item.priority}</span>
+                            <span style={{ fontSize: 11, color: C.textMuted }}>P{item.priority}</span>
                             <span style={{ fontSize: 11, fontWeight: 600, borderRadius: 5, padding: "3px 8px", background: statusBg, color: statusColor, textTransform: "uppercase", letterSpacing: "0.05em" }}>
                               {item.status.replace("_", " ")}
                             </span>
                           </div>
                         </div>
-                        {item.why && (
-                          <p style={{ margin: 0, fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>{fixText(item.why)}</p>
-                        )}
-                        {item.notes && (
-                          <p style={{ margin: 0, fontSize: 12, color: "#475569", whiteSpace: "pre-wrap" }}>{fixText(item.notes)}</p>
-                        )}
+                        {item.why && <p style={{ margin: 0, fontSize: 13, color: C.textSec, lineHeight: 1.55 }}>{fixText(item.why)}</p>}
+                        {item.notes && <p style={{ margin: 0, fontSize: 12, color: C.textMuted, whiteSpace: "pre-wrap" }}>{fixText(item.notes)}</p>}
                       </div>
                     );
                   })}
@@ -812,15 +788,15 @@ export default function HomePage() {
 
         </div>
 
-        {/* ── Task modal ──────────────────────────────────────────────────── */}
+        {/* ── Task modal ───────────────────────────────────────────────────── */}
         {showTaskForm && (
           <div
-            style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", backdropFilter: "blur(4px)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+            style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(5px)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
             onClick={e => { if (e.target === e.currentTarget) { setShowTaskForm(false); setEditTask(null); } }}
           >
-            <div style={{ background: "#0a1628", border: "1px solid #1e293b", borderRadius: 14, padding: 28, width: "100%", maxWidth: 540, maxHeight: "90vh", overflowY: "auto" }}>
+            <div style={{ background: C.inputBg, border: `1px solid ${C.border}`, borderRadius: 14, padding: 28, width: "100%", maxWidth: 540, maxHeight: "90vh", overflowY: "auto" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 }}>
-                <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: "#f1f5f9" }}>
+                <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: C.textMain }}>
                   {editTask ? "Edit Task" : "New Task"}
                 </h2>
                 <button style={{ ...btnGhost, padding: "5px 11px", fontSize: 14 }} onClick={() => { setShowTaskForm(false); setEditTask(null); }}>✕</button>
@@ -863,9 +839,7 @@ export default function HomePage() {
 
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 22 }}>
                 <div>
-                  {editTask && (
-                    <button style={btnDanger} onClick={() => handleDeleteTask(editTask.id)}>Delete</button>
-                  )}
+                  {editTask && <button style={btnDanger} onClick={() => handleDeleteTask(editTask.id)}>Delete</button>}
                 </div>
                 <div style={{ display: "flex", gap: 9 }}>
                   <button style={btnGhost} onClick={() => { setShowTaskForm(false); setEditTask(null); }}>Cancel</button>
