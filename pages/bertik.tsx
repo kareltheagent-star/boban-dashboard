@@ -32,10 +32,13 @@ export interface BettingRec {
   stake_pct: number | null;
   confidence: "high" | "medium" | "low" | null;
   status: "recommended" | "won" | "lost" | "push" | "void";
+  decimal_odds: number | null;   // preferred odds field
   profit_loss: number | null;
   recommended_at: string;
   settled_at: string | null;
   notes: string | null;
+  // JSONB from the odds-API event (home_team, away_team, sport_key, …)
+  source_candidate: Record<string, unknown> | null;
 }
 
 interface Props {
@@ -87,29 +90,28 @@ const SPORT_INFO: Record<string, { icon: string; color: string; bg: string }> = 
   hockey:     { icon: "🏒", color: "#94a3b8", bg: "rgba(148,163,184,0.12)" },
 };
 
-// ── Team abbreviation → full name lookup ────────────────────────────────────
-const TEAM_NAMES: Record<string, string> = {
-  // EPL
-  ars: "Arsenal",    che: "Chelsea",    mci: "Man City",    mun: "Man Utd",
-  liv: "Liverpool",  tot: "Spurs",      avl: "Aston Villa", new: "Newcastle",
-  eve: "Everton",    whu: "West Ham",   bha: "Brighton",    bur: "Burnley",
-  wol: "Wolves",     bou: "Bournemouth",ful: "Fulham",      cry: "Crystal P.",
-  // La Liga
-  bar: "Barcelona",  rma: "Real Madrid",atm: "Atlético",    sev: "Sevilla",
-  val: "Valencia",   bet: "Betis",      ath: "Athletic",
-  // Bundesliga
-  bay: "Bayern",     dor: "Dortmund",   rbl: "Leipzig",     bayer: "Leverkusen",
-  // Serie A
-  juv: "Juventus",   int: "Inter",      acm: "AC Milan",    nap: "Napoli",
-  rom: "Roma",       laz: "Lazio",
-  // Ligue 1
-  psg: "PSG",        mar: "Marseille",  oly: "Lyon",
-  // NBA
-  lal: "Lakers",     bos: "Celtics",    gsw: "Warriors",    mil: "Bucks",
-  bkn: "Nets",       phi: "76ers",      mia: "Heat",        den: "Nuggets",
-  phx: "Suns",       dal: "Mavericks",  mem: "Grizzlies",   nop: "Pelicans",
-  // NFL
-  kcc: "Chiefs",     buf: "Bills",      sfo: "49ers",       phi_e: "Eagles",
+// sport_key league-suffix → short display label
+const LEAGUE_SHORT: Record<string, string> = {
+  epl:                  "EPL",
+  premier_league:       "EPL",
+  uefa_champs_league:   "UCL",
+  champions_league:     "UCL",
+  europa_league:        "UEL",
+  conference_league:    "UECL",
+  bundesliga:           "Bundesliga",
+  la_liga:              "La Liga",
+  la_liga2:             "La Liga 2",
+  serie_a:              "Serie A",
+  ligue_1:              "Ligue 1",
+  eredivisie:           "Eredivisie",
+  primeira_liga:        "Liga NOS",
+  scotland_premiership: "Premiership",
+  nba:                  "NBA",
+  ncaab:                "NCAA",
+  mlb:                  "MLB",
+  nfl:                  "NFL",
+  nhl:                  "NHL",
+  mls:                  "MLS",
 };
 
 function capWords(s: string): string {
@@ -118,68 +120,126 @@ function capWords(s: string): string {
     .join(" ");
 }
 
-// ── Parse "soccer-epl-2026-03-15-ars-che" → { sport, league, matchLabel } ──
-function parseEventId(eventId: string | null): { sport: string; league: string; matchLabel: string } {
-  if (!eventId) return { sport: "", league: "", matchLabel: "" };
+// ── Parse sport_key like "soccer_epl" or "basketball_nba" ──────────────────
+// Also handles The Odds API event_id format "soccer_epl:abc123hash"
+function parseSportKey(raw: string | null | undefined): { sport: string; league: string } {
+  if (!raw) return { sport: "", league: "" };
 
-  const parts = eventId.split("-");
-  let idx = 0;
+  // Strip any trailing ":eventHash" suffix
+  const key = raw.split(":")[0].toLowerCase();
 
-  // Part 0: sport
-  const sport = parts[idx++] ?? "";
+  // Determine sport by prefix, then derive league suffix
+  const PREFIXES: [RegExp, string][] = [
+    [/^soccer_/, "soccer"],
+    [/^football_/, "soccer"],          // some APIs use football_ for soccer
+    [/^americanfootball_/, "football"],
+    [/^american_football_/, "football"],
+    [/^basketball_/, "basketball"],
+    [/^baseball_/, "baseball"],
+    [/^icehockey_/, "hockey"],
+    [/^ice_hockey_/, "hockey"],
+    [/^tennis_/, "tennis"],
+    [/^rugby_/, "rugby"],
+  ];
 
-  // Part 1: league code if it doesn't look like a year (4-digit number)
-  let league = "";
-  if (parts[idx] && !/^\d{4}$/.test(parts[idx])) {
-    league = (parts[idx++] ?? "").toUpperCase();
+  let sport = "";
+  let leagueRaw = "";
+
+  for (const [re, s] of PREFIXES) {
+    if (re.test(key)) {
+      sport = s;
+      leagueRaw = key.replace(re, "");
+      break;
+    }
   }
 
-  // Skip YYYY-MM-DD (3 parts)
-  idx += 3;
-
-  // Remaining: team codes — expect exactly 2 tokens (each may be multi-word)
-  const teamParts = parts.slice(idx);
-  let t1 = "", t2 = "";
-  if (teamParts.length >= 2) {
-    t1 = teamParts[0];
-    t2 = teamParts.slice(1).join("-");
-  } else if (teamParts.length === 1) {
-    t1 = teamParts[0];
+  if (!sport) {
+    // Generic: first segment is sport
+    const idx = key.indexOf("_");
+    sport    = idx > -1 ? key.slice(0, idx) : key;
+    leagueRaw = idx > -1 ? key.slice(idx + 1) : "";
   }
 
-  const name1 = TEAM_NAMES[t1] ?? capWords(t1);
-  const name2 = t2 ? (TEAM_NAMES[t2] ?? capWords(t2)) : "";
-  const matchLabel = name2 ? `${name1} v ${name2}` : name1;
+  const league = LEAGUE_SHORT[leagueRaw]
+    ?? (leagueRaw ? leagueRaw.toUpperCase().replace(/_/g, " ") : "");
 
-  return { sport, league, matchLabel };
+  return { sport, league };
 }
 
-// ── Parse market_type + selection_name → human-readable bet type ───────────
-function parseBetType(marketType: string | null, selectionName: string | null): string {
-  const sel = (selectionName ?? "").trim();
+// ── Short team names used in Czech bet labels ───────────────────────────────
+const TEAM_SHORT: Record<string, string> = {
+  "west ham united":         "West Ham",
+  "manchester city":         "Man City",
+  "manchester united":       "Man Utd",
+  "tottenham hotspur":       "Spurs",
+  "newcastle united":        "Newcastle",
+  "wolverhampton wanderers": "Wolves",
+  "sheffield united":        "Sheffield Utd",
+  "nottingham forest":       "Nott'm Forest",
+  "brighton & hove albion":  "Brighton",
+  "los angeles lakers":      "Lakers",
+  "boston celtics":          "Celtics",
+  "golden state warriors":   "Warriors",
+  "milwaukee bucks":         "Bucks",
+};
+
+function shortTeam(name: string): string {
+  return TEAM_SHORT[name.toLowerCase()] ?? name;
+}
+
+// ── Czech bet type labels ───────────────────────────────────────────────────
+function betTypeCZ(marketType: string | null, selectionName: string | null): string {
+  const sel    = (selectionName ?? "").trim();
+  const selLow = sel.toLowerCase();
+  const isDraw = selLow === "draw" || selLow === "x" || selLow === "remíza";
+
   switch ((marketType ?? "").toLowerCase()) {
     case "h2h":
     case "moneyline":
-      return sel || "Match Result";
+    case "three_way_moneyline": {
+      if (isDraw) return "Remíza";
+      if (sel)    return `${shortTeam(sel)} výhra`;
+      return "Výhra";
+    }
+    case "three_way_draw":
+      return "Remíza";
     case "totals":
-    case "over_under":
+    case "over_under": {
+      const m = sel.match(/^(over|under)\s*([\d.]+)/i);
+      if (m) {
+        const dir = m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase();
+        return `${dir} ${m[2]} gólů`;
+      }
       return sel || "Over/Under";
+    }
     case "btts":
-    case "both_teams_score":
-      return sel ? `BTTS ${sel}` : "BTTS";
+    case "both_teams_score": {
+      if (selLow === "yes" || selLow === "ano") return "Oba dají gól";
+      if (selLow === "no"  || selLow === "ne")  return "Oba nedají gól";
+      return "Oba dají gól";
+    }
     case "spreads":
     case "handicap":
-      return sel || "Handicap";
+      return sel ? `Handicap ${sel}` : "Handicap";
     case "draw_no_bet":
-      return sel ? `DNB: ${sel}` : "Draw No Bet";
+      return sel ? `DNB: ${shortTeam(sel)}` : "Draw No Bet";
     case "first_goalscorer":
-      return sel ? `FGS: ${sel}` : "First Goal";
+      return sel ? `1. gól: ${sel}` : "První gól";
     default:
       return sel || (marketType ? capWords(marketType) : "—");
   }
 }
 
-// ── Resolve display fields from a rec (handles old vs new schema) ───────────
+// ── source_candidate JSONB shape ────────────────────────────────────────────
+interface SourceCandidate {
+  home_team?: string;
+  away_team?: string;
+  sport_key?: string;   // "soccer_epl", "basketball_nba"
+  sport_title?: string; // human title from the odds API
+  commence_time?: string;
+}
+
+// ── Resolve all display fields from one rec ─────────────────────────────────
 interface ParsedRec {
   sport: string;
   league: string;
@@ -188,23 +248,35 @@ interface ParsedRec {
 }
 
 function parsedRec(rec: BettingRec): ParsedRec {
-  // Start with explicit DB columns
-  let sport  = rec.sport ?? "";
+  const sc = rec.source_candidate as SourceCandidate | null | undefined;
+
+  // Sport + league: source_candidate.sport_key is the most reliable source
+  let sport  = rec.sport  ?? "";
   let league = rec.league ?? "";
 
-  // Fall back to parsing event_id
-  const fromId = parseEventId(rec.event_id);
-  if (!sport)  sport  = fromId.sport;
-  if (!league) league = fromId.league;
+  if (!sport || !league) {
+    // Try sport_key from source_candidate first, then fall back to event_id prefix
+    const raw = sc?.sport_key ?? rec.event_id ?? "";
+    const fromKey = parseSportKey(raw);
+    if (!sport)  sport  = fromKey.sport;
+    if (!league) league = fromKey.league || (sc?.sport_title ?? "");
+  }
 
-  // Match label: prefer parsed event_id, fall back to legacy event_name
-  const matchLabel = fromId.matchLabel || (rec.event_name ?? "—");
+  // Match label: source_candidate teams are authoritative
+  let matchLabel = "";
+  if (sc?.home_team && sc?.away_team) {
+    matchLabel = `${sc.home_team} vs ${sc.away_team}`;
+  } else if (rec.event_id) {
+    // Strip hash suffix and humanise: "soccer_epl:abc123" → "Soccer Epl"
+    const stripped = rec.event_id.split(":")[0];
+    matchLabel = capWords(stripped.replace(/_/g, " "));
+  }
+  if (!matchLabel) matchLabel = rec.event_name ?? "—";
 
-  // Bet type: prefer structured fields, fall back to legacy selection
-  const betType =
-    (rec.market_type || rec.selection_name)
-      ? parseBetType(rec.market_type, rec.selection_name)
-      : (rec.selection ?? "—");
+  // Bet type (Czech)
+  const betType = (rec.market_type || rec.selection_name)
+    ? betTypeCZ(rec.market_type, rec.selection_name)
+    : (rec.selection ?? "—");
 
   return { sport, league, matchLabel, betType };
 }
@@ -463,7 +535,7 @@ export default function BertikPage({ active, settled, chartData, stats, tableErr
                         <td style={{ ...tdStyle, color: C.textSec }}>
                           {p.betType}
                         </td>
-                        <td style={tdMuted}>{fmtOdds(rec.odds)}</td>
+                        <td style={tdMuted}>{fmtOdds(rec.decimal_odds ?? rec.odds)}</td>
                         <td style={{ ...tdMuted, color: rec.edge_pct != null && rec.edge_pct > 0 ? "#34d399" : C.textSec }}>
                           {rec.edge_pct != null ? `${rec.edge_pct.toFixed(1)}%` : "—"}
                         </td>
@@ -539,7 +611,7 @@ export default function BertikPage({ active, settled, chartData, stats, tableErr
                         <td style={{ ...tdStyle, color: C.textSec }}>
                           {p.betType}
                         </td>
-                        <td style={tdMuted}>{fmtOdds(rec.odds)}</td>
+                        <td style={tdMuted}>{fmtOdds(rec.decimal_odds ?? rec.odds)}</td>
                         <td style={tdStyle}>
                           <Badge label={rec.status} color={os.color} bg={os.bg} />
                         </td>
