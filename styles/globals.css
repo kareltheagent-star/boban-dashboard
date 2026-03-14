@@ -73,6 +73,15 @@ textarea.input-dark {
   resize: vertical;
 }
 
+/* ── Pulsing status dot ─────────────────────────────────────────────────── */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1;   transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(0.75); }
+}
+.pulse-dot {
+  animation: pulse-dot 1.8s ease-in-out infinite;
+}
+
 /* ── Drag & drop card hover ─────────────────────────────────────────────── */
 [draggable="true"]:hover {
   transform: translateY(-1px);
