@@ -54,8 +54,19 @@ export default function BacklogPage({ initialItems }: Props) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  const byStatus = (status: Status) =>
-    items.filter(i => i.status === status).sort((a, b) => a.priority - b.priority);
+  const byStatus = (status: Status) => {
+    const filtered = items.filter(i => i.status === status);
+    if (status === "done") {
+      return filtered.sort((a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+    }
+    return filtered.sort((a, b) =>
+      a.priority !== b.priority
+        ? a.priority - b.priority
+        : a.id.localeCompare(b.id)
+    );
+  };
 
   const handleDragStart = (id: string) => setDragging(id);
   const handleDragEnd = () => { setDragging(null); setDragOver(null); };
