@@ -3,6 +3,7 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthGate } from "../components/AuthGate";
 import { NavSidebar } from "./NavSidebar";
+import { BottomNavWrapper } from "./BottomNavWrapper";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -21,6 +22,11 @@ export const metadata = {
   description: "Status dashboard for Boban agent",
 };
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+};
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
@@ -32,6 +38,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               {children}
             </main>
           </div>
+          <BottomNavWrapper />
         </AuthGate>
       </body>
     </html>

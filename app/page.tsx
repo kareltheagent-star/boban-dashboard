@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, FormEvent } from "react";
 import type { CSSProperties } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { useBreakpoint } from "../hooks/useBreakpoint";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type BacklogStatus = "pending" | "in_progress" | "blocked" | "done";
@@ -269,6 +270,11 @@ export default function HomePage() {
   const [savingLearn, setSavingLearn] = useState(false);
   const [learnError, setLearnError] = useState<string | null>(null);
 
+  const bp        = useBreakpoint();
+  const isMobile  = bp === "mobile";
+  const isTablet  = bp === "tablet";
+  const [taskMsgExpanded, setTaskMsgExpanded] = useState(false);
+
   // ── Data loading ─────────────────────────────────────────────────────────
   const load = useCallback(async () => {
     if (!supabase) {
@@ -415,9 +421,99 @@ export default function HomePage() {
   const oauthWarn =
     agentStatus?.oauth_expires_days != null && agentStatus.oauth_expires_days < 3;
 
+  // ── Learning body (shared by inline desktop view and mobile modal) ────────
+  const renderLearningBody = () => (
+    <>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
+        <button
+          onClick={() => { setShowAddLearn(v => !v); setLearnError(null); }}
+          style={showAddLearn ? { ...btnGhost, color: C.textMain, borderColor: C.border } : btnGhost}
+        >
+          {showAddLearn ? "Cancel" : "+ Add topic"}
+        </button>
+      </div>
+
+      {showAddLearn && (
+        <form onSubmit={handleAddLearn} style={{ background: C.deepBg, border: `1px solid ${C.borderSub}`, borderRadius: 10, padding: 18, marginBottom: 18, display: "flex", flexDirection: "column", gap: 12 }}>
+          <div className="form-grid-2">
+            <div>
+              <label style={labelSt}>Topic *</label>
+              <input className="input-dark" placeholder="e.g. Supabase RLS" value={learnForm.topic} onChange={e => setLearnForm(f => ({ ...f, topic: e.target.value }))} />
+            </div>
+            <div>
+              <label style={labelSt}>Priority (1 = highest)</label>
+              <input type="number" min={1} max={9} className="input-dark" value={learnForm.priority} onChange={e => setLearnForm(f => ({ ...f, priority: Number(e.target.value) || 3 }))} />
+            </div>
+          </div>
+          <div>
+            <label style={labelSt}>Why this matters</label>
+            <textarea className="input-dark" placeholder="Context, project, or risk..." value={learnForm.why} onChange={e => setLearnForm(f => ({ ...f, why: e.target.value }))} style={{ minHeight: 64, resize: "vertical" }} />
+          </div>
+          <div className="form-grid-2">
+            <div>
+              <label style={labelSt}>Status</label>
+              <select className="input-dark" value={learnForm.status} onChange={e => setLearnForm(f => ({ ...f, status: e.target.value as LearningStatus }))}>
+                <option value="pending">Pending</option>
+                <option value="in_progress">In Progress</option>
+                <option value="blocked">Blocked</option>
+                <option value="done">Done</option>
+              </select>
+            </div>
+            <div>
+              <label style={labelSt}>Notes</label>
+              <textarea className="input-dark" placeholder="Links, repos, constraints..." value={learnForm.notes} onChange={e => setLearnForm(f => ({ ...f, notes: e.target.value }))} style={{ minHeight: 64, resize: "vertical" }} />
+            </div>
+          </div>
+          {learnError && <p style={{ fontSize: 13, color: "#f87171", margin: 0 }}>{learnError}</p>}
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button type="submit" disabled={savingLearn} style={btnPrimary}>
+              {savingLearn ? "Saving…" : "Add topic"}
+            </button>
+          </div>
+        </form>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+        {learningItems.length === 0 && (
+          <p style={{ fontSize: 14, color: C.textMuted, margin: 0 }}>No learning items yet.</p>
+        )}
+        {learningItems.map(item => {
+          const isDone = item.status === "done";
+          const statusColor =
+            isDone                        ? "#34d399" :
+            item.status === "in_progress" ? "#60a5fa" :
+            item.status === "blocked"     ? "#f87171" :
+            C.textSec;
+          const statusBg =
+            isDone                        ? "rgba(52,211,153,0.12)" :
+            item.status === "in_progress" ? "rgba(96,165,250,0.12)" :
+            item.status === "blocked"     ? "rgba(248,113,113,0.12)" :
+            "rgba(100,116,139,0.1)";
+          return (
+            <div key={item.id} style={{ background: C.itemBg, border: `1px solid ${C.border}`, borderRadius: 9, padding: "12px 16px", display: "flex", flexDirection: "column", gap: 5 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 14, fontWeight: 500, color: isDone ? C.textMuted : C.textMain, textDecoration: isDone ? "line-through" : "none", flex: 1 }}>
+                  {fixText(item.topic)}
+                </span>
+                <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
+                  <span style={{ fontSize: 11, color: C.textMuted }}>P{item.priority}</span>
+                  <span style={{ fontSize: 11, fontWeight: 600, borderRadius: 5, padding: "3px 8px", background: statusBg, color: statusColor, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                    {item.status.replace("_", " ")}
+                  </span>
+                </div>
+              </div>
+              {item.why && <p style={{ margin: 0, fontSize: 13, color: C.textSec, lineHeight: 1.55 }}>{fixText(item.why)}</p>}
+              {item.notes && <p style={{ margin: 0, fontSize: 12, color: C.textMuted, whiteSpace: "pre-wrap" }}>{fixText(item.notes)}</p>}
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-      <div style={{ minHeight: "100vh", background: C.pageBg, color: C.textMain, fontFamily: "var(--font-inter, 'Inter', system-ui, sans-serif)", fontSize: 15 }}>
+      <div className="page-root" style={{ minHeight: "100vh", background: C.pageBg, color: C.textMain, fontFamily: "var(--font-inter, 'Inter', system-ui, sans-serif)", fontSize: 15 }}>
 
         {/* OAuth expiry warning banner */}
         {oauthWarn && (
@@ -428,18 +524,18 @@ export default function HomePage() {
           </div>
         )}
 
-        <div style={{ maxWidth: 1440, margin: "0 auto", padding: "22px 28px", display: "flex", flexDirection: "column", gap: 22 }}>
+        <div style={{ maxWidth: 1440, margin: "0 auto", padding: isMobile ? "14px 14px" : "22px 28px", display: "flex", flexDirection: "column", gap: isMobile ? 16 : 22 }}>
 
           {/* ── HEADER ───────────────────────────────────────────────────── */}
-          <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, letterSpacing: "-0.03em", color: C.textMain }}>
+          <header style={{ display: "flex", flexWrap: "wrap", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", gap: isMobile ? 10 : 14 }}>
+            <h1 style={{ margin: 0, fontSize: isMobile ? 22 : 28, fontWeight: 700, letterSpacing: "-0.03em", color: C.textMain }}>
               Boban 🤖
             </h1>
-            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "flex-start" : "center", gap: isMobile ? 8 : 14 }}>
               {agentStatus && (
                 <span style={{
                   display: "inline-flex", alignItems: "center", gap: 8,
-                  borderRadius: 999, padding: "6px 16px", fontSize: 13, fontWeight: 600,
+                  borderRadius: 999, padding: "6px 14px", fontSize: 13, fontWeight: 600,
                   background: agentStatus.gateway_running ? "rgba(52,211,153,0.12)" : "rgba(239,68,68,0.12)",
                   color: agentStatus.gateway_running ? "#34d399" : "#f87171",
                   border: `1px solid ${agentStatus.gateway_running ? "rgba(52,211,153,0.35)" : "rgba(239,68,68,0.35)"}`,
@@ -474,7 +570,7 @@ export default function HomePage() {
           )}
 
           {/* ── METRICS ROW ──────────────────────────────────────────────── */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 12 }}>
             <MetricCard label="RAM"  value={agentStatus?.mac_ram_pct  != null ? `${agentStatus.mac_ram_pct.toFixed(1)}%`  : "—"} gaugeVal={agentStatus?.mac_ram_pct  ?? null} warnAt={70} dangerAt={90} loading={loading} />
             <MetricCard label="CPU"  value={agentStatus?.mac_cpu_pct  != null ? `${agentStatus.mac_cpu_pct.toFixed(1)}%`  : "—"} gaugeVal={agentStatus?.mac_cpu_pct  ?? null} warnAt={70} dangerAt={90} loading={loading} />
             <MetricCard label="Disk" value={agentStatus?.mac_disk_pct != null ? `${agentStatus.mac_disk_pct.toFixed(1)}%` : "—"} gaugeVal={agentStatus?.mac_disk_pct ?? null} warnAt={80} dangerAt={95} loading={loading} />
@@ -494,7 +590,7 @@ export default function HomePage() {
           </div>
 
           {/* ── TWO COLUMN SECTION ───────────────────────────────────────── */}
-          <div style={{ display: "grid", gridTemplateColumns: "3fr 2fr", gap: 18, alignItems: "start" }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile || isTablet ? "1fr" : "3fr 2fr", gap: 18, alignItems: "start" }}>
 
             {/* LEFT: Kanban board */}
             <div>
@@ -507,7 +603,12 @@ export default function HomePage() {
                 </button>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+              <div
+                className={isMobile ? "kanban-scroll" : ""}
+                style={isMobile ? {} : isTablet
+                  ? { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }
+                  : { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}
+              >
                 {KANBAN_COLUMNS.map(col => {
                   const colItems = byStatus(col.key);
                   const isOver = dragOver === col.key;
@@ -518,6 +619,7 @@ export default function HomePage() {
                   return (
                     <div
                       key={col.key}
+                      className={isMobile ? "kanban-col-snap" : ""}
                       onDragOver={e => { e.preventDefault(); setDragOver(col.key); }}
                       onDragLeave={() => setDragOver(null)}
                       onDrop={() => handleDrop(col.key)}
@@ -559,7 +661,8 @@ export default function HomePage() {
                               background: dragging === item.id ? C.itemBgHov : C.itemBg,
                               border: `1px solid ${C.border}`,
                               borderRadius: 8,
-                              padding: "11px 13px",
+                              padding: "12px 13px",
+                              minHeight: 44,
                               opacity: dragging === item.id ? 0.45 : 1,
                               cursor: "grab",
                               transition: "all 0.12s",
@@ -630,9 +733,21 @@ export default function HomePage() {
                       </p>
                     )}
                     {agentStatus?.last_message && (
-                      <p style={{ margin: "8px 0 0", fontSize: 13, color: C.textSec, lineHeight: 1.55, borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
-                        {fixText(agentStatus.last_message)}
-                      </p>
+                      <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 8, marginTop: 8 }}>
+                        <p style={{ margin: 0, fontSize: 13, color: C.textSec, lineHeight: 1.55 }}>
+                          {isMobile && !taskMsgExpanded && agentStatus.last_message.length > 120
+                            ? fixText(agentStatus.last_message).slice(0, 120) + "…"
+                            : fixText(agentStatus.last_message)}
+                        </p>
+                        {isMobile && agentStatus.last_message.length > 120 && (
+                          <button
+                            onClick={() => setTaskMsgExpanded(v => !v)}
+                            style={{ background: "none", border: "none", cursor: "pointer", color: C.textMuted, fontSize: 11, marginTop: 4, padding: "4px 0", display: "block", minHeight: 44 }}
+                          >
+                            {taskMsgExpanded ? "↑ Show less" : "↓ Show more"}
+                          </button>
+                        )}
+                      </div>
                     )}
                   </>
                 )}
@@ -673,12 +788,37 @@ export default function HomePage() {
           </div>
 
           {/* ── LEARNING SECTION ─────────────────────────────────────────── */}
+
+          {/* Mobile: full-screen slide-up modal */}
+          {isMobile && learningExpanded && (
+            <div
+              className="slide-up"
+              style={{ position: "fixed", inset: 0, background: C.pageBg, zIndex: 60, display: "flex", flexDirection: "column" }}
+            >
+              <div style={{ position: "sticky", top: 0, zIndex: 1, background: C.cardBg, borderBottom: `1px solid ${C.border}`, padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 15, fontWeight: 600, color: C.textMain }}>📚 Learning</span>
+                  <span style={{ fontSize: 12, color: C.textSec, background: C.badgeBg, borderRadius: 6, padding: "2px 8px" }}>{pendingLearn} pending</span>
+                  <span style={{ fontSize: 12, color: "#34d399", background: "rgba(52,211,153,0.1)", borderRadius: 6, padding: "2px 8px" }}>{doneLearn} done</span>
+                </div>
+                <button
+                  style={{ background: "transparent", border: `1px solid ${C.border}`, color: C.textSec, borderRadius: 6, padding: "8px 14px", cursor: "pointer", fontSize: 14, minWidth: 44, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center" }}
+                  onClick={() => setLearningExpanded(false)}
+                >✕</button>
+              </div>
+              <div style={{ flex: 1, overflowY: "auto", padding: "16px 14px", paddingBottom: 80 }}>
+                {renderLearningBody()}
+              </div>
+            </div>
+          )}
+
+          {/* Collapsed trigger row + desktop inline expanded */}
           <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
             <button
               onClick={() => setLearningExpanded(v => !v)}
               style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", background: "transparent", border: "none", cursor: "pointer", color: C.textSec, textAlign: "left", minHeight: 56 }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 13, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: C.textLabel }}>
                   📚 Learning Backlog
                 </span>
@@ -689,97 +829,14 @@ export default function HomePage() {
                   {doneLearn} done
                 </span>
               </div>
-              <span style={{ fontSize: 12, color: C.textMuted, transform: learningExpanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", display: "inline-block" }}>
+              <span style={{ fontSize: 12, color: C.textMuted, transform: learningExpanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", display: "inline-block", marginLeft: 8, flexShrink: 0 }}>
                 ▼
               </span>
             </button>
 
-            {learningExpanded && (
+            {learningExpanded && !isMobile && (
               <div style={{ borderTop: `1px solid ${C.border}`, padding: 20 }}>
-                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
-                  <button
-                    onClick={() => { setShowAddLearn(v => !v); setLearnError(null); }}
-                    style={showAddLearn ? { ...btnGhost, color: C.textMain, borderColor: C.border } : btnGhost}
-                  >
-                    {showAddLearn ? "Cancel" : "+ Add topic"}
-                  </button>
-                </div>
-
-                {showAddLearn && (
-                  <form onSubmit={handleAddLearn} style={{ background: C.deepBg, border: `1px solid ${C.borderSub}`, borderRadius: 10, padding: 18, marginBottom: 18, display: "flex", flexDirection: "column", gap: 12 }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                      <div>
-                        <label style={labelSt}>Topic *</label>
-                        <input className="input-dark" placeholder="e.g. Supabase RLS" value={learnForm.topic} onChange={e => setLearnForm(f => ({ ...f, topic: e.target.value }))} />
-                      </div>
-                      <div>
-                        <label style={labelSt}>Priority (1 = highest)</label>
-                        <input type="number" min={1} max={9} className="input-dark" value={learnForm.priority} onChange={e => setLearnForm(f => ({ ...f, priority: Number(e.target.value) || 3 }))} />
-                      </div>
-                    </div>
-                    <div>
-                      <label style={labelSt}>Why this matters</label>
-                      <textarea className="input-dark" placeholder="Context, project, or risk..." value={learnForm.why} onChange={e => setLearnForm(f => ({ ...f, why: e.target.value }))} style={{ minHeight: 64, resize: "vertical" }} />
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                      <div>
-                        <label style={labelSt}>Status</label>
-                        <select className="input-dark" value={learnForm.status} onChange={e => setLearnForm(f => ({ ...f, status: e.target.value as LearningStatus }))}>
-                          <option value="pending">Pending</option>
-                          <option value="in_progress">In Progress</option>
-                          <option value="blocked">Blocked</option>
-                          <option value="done">Done</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label style={labelSt}>Notes</label>
-                        <textarea className="input-dark" placeholder="Links, repos, constraints..." value={learnForm.notes} onChange={e => setLearnForm(f => ({ ...f, notes: e.target.value }))} style={{ minHeight: 64, resize: "vertical" }} />
-                      </div>
-                    </div>
-                    {learnError && <p style={{ fontSize: 13, color: "#f87171", margin: 0 }}>{learnError}</p>}
-                    <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                      <button type="submit" disabled={savingLearn} style={btnPrimary}>
-                        {savingLearn ? "Saving…" : "Add topic"}
-                      </button>
-                    </div>
-                  </form>
-                )}
-
-                <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-                  {learningItems.length === 0 && (
-                    <p style={{ fontSize: 14, color: C.textMuted, margin: 0 }}>No learning items yet.</p>
-                  )}
-                  {learningItems.map(item => {
-                    const isDone = item.status === "done";
-                    const statusColor =
-                      isDone                        ? "#34d399" :
-                      item.status === "in_progress" ? "#60a5fa" :
-                      item.status === "blocked"     ? "#f87171" :
-                      C.textSec;
-                    const statusBg =
-                      isDone                        ? "rgba(52,211,153,0.12)" :
-                      item.status === "in_progress" ? "rgba(96,165,250,0.12)" :
-                      item.status === "blocked"     ? "rgba(248,113,113,0.12)" :
-                      "rgba(100,116,139,0.1)";
-                    return (
-                      <div key={item.id} style={{ background: C.itemBg, border: `1px solid ${C.border}`, borderRadius: 9, padding: "12px 16px", display: "flex", flexDirection: "column", gap: 5 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-                          <span style={{ fontSize: 14, fontWeight: 500, color: isDone ? C.textMuted : C.textMain, textDecoration: isDone ? "line-through" : "none", flex: 1 }}>
-                            {fixText(item.topic)}
-                          </span>
-                          <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
-                            <span style={{ fontSize: 11, color: C.textMuted }}>P{item.priority}</span>
-                            <span style={{ fontSize: 11, fontWeight: 600, borderRadius: 5, padding: "3px 8px", background: statusBg, color: statusColor, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                              {item.status.replace("_", " ")}
-                            </span>
-                          </div>
-                        </div>
-                        {item.why && <p style={{ margin: 0, fontSize: 13, color: C.textSec, lineHeight: 1.55 }}>{fixText(item.why)}</p>}
-                        {item.notes && <p style={{ margin: 0, fontSize: 12, color: C.textMuted, whiteSpace: "pre-wrap" }}>{fixText(item.notes)}</p>}
-                      </div>
-                    );
-                  })}
-                </div>
+                {renderLearningBody()}
               </div>
             )}
           </div>
@@ -792,7 +849,7 @@ export default function HomePage() {
             style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(5px)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
             onClick={e => { if (e.target === e.currentTarget) { setShowTaskForm(false); setEditTask(null); } }}
           >
-            <div style={{ background: C.inputBg, border: `1px solid ${C.border}`, borderRadius: 14, padding: 28, width: "100%", maxWidth: 540, maxHeight: "90vh", overflowY: "auto" }}>
+              <div style={{ background: C.inputBg, border: `1px solid ${C.border}`, borderRadius: 14, padding: isMobile ? 18 : 28, width: "100%", maxWidth: 540, maxHeight: "90vh", overflowY: "auto" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 }}>
                 <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: C.textMain }}>
                   {editTask ? "Edit Task" : "New Task"}
@@ -805,7 +862,7 @@ export default function HomePage() {
                   <label style={labelSt}>Title *</label>
                   <input className="input-dark" placeholder="Task title" value={taskForm.title} onChange={e => setTaskForm(f => ({ ...f, title: e.target.value }))} />
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                <div className="form-grid-2" style={{ gap: 14 }}>
                   <div>
                     <label style={labelSt}>Priority</label>
                     <select className="input-dark" value={taskForm.priority} onChange={e => setTaskForm(f => ({ ...f, priority: +e.target.value }))}>

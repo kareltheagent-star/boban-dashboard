@@ -34,13 +34,12 @@ export function NavSidebar() {
   const path = usePathname();
 
   return (
-    <aside style={{
+    <aside className="nav-sidebar" style={{
       width: 200,
       minHeight: "100vh",
       background: C.cardBg,
       borderRight: `1px solid ${C.border}`,
       padding: "20px 12px",
-      display: "flex",
       flexDirection: "column",
       gap: 8,
       flexShrink: 0,

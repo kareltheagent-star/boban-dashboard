@@ -2,6 +2,7 @@ import { GetServerSideProps } from "next";
 import dynamic from "next/dynamic";
 import { createClient } from "@supabase/supabase-js";
 import type { ChartPoint } from "../components/BertikChart";
+import { useBreakpoint } from "../hooks/useBreakpoint";
 
 // Chart is client-only (recharts uses browser APIs)
 const BertikChart = dynamic(() => import("../components/BertikChart"), {
@@ -153,6 +154,9 @@ const tdMuted: React.CSSProperties = {
 
 // ── Page component ─────────────────────────────────────────────────────────
 export default function BertikPage({ active, settled, chartData, stats, tableError }: Props) {
+  const bp = useBreakpoint();
+  const isMobile = bp === "mobile";
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24, fontFamily: "var(--font-inter, 'Inter', system-ui, sans-serif)", color: C.textMain }}>
 
@@ -207,7 +211,7 @@ export default function BertikPage({ active, settled, chartData, stats, tableErr
       )}
 
       {/* ── STAT CARDS ─────────────────────────────────────────────────── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 12 }}>
         <StatCard
           label="Recs this week"
           value={String(stats.totalThisWeek)}
@@ -251,7 +255,7 @@ export default function BertikPage({ active, settled, chartData, stats, tableErr
             </p>
           ) : (
             <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <table style={{ width: "100%", minWidth: 640, borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ background: C.itemBg }}>
                     <th style={thStyle}>Event</th>
@@ -316,7 +320,7 @@ export default function BertikPage({ active, settled, chartData, stats, tableErr
             </p>
           ) : (
             <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <table style={{ width: "100%", minWidth: 560, borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ background: C.itemBg }}>
                     <th style={thStyle}>Event</th>

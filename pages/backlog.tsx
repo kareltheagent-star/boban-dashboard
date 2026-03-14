@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { GetServerSideProps } from "next";
 import { createClient } from "@supabase/supabase-js";
+import { useBreakpoint } from "../hooks/useBreakpoint";
 
 type Status = "pending" | "in_progress" | "blocked" | "done";
 
@@ -36,6 +37,10 @@ const PRIORITY_COLORS: Record<number, string> = {
 };
 
 export default function BacklogPage({ initialItems }: Props) {
+  const bp = useBreakpoint();
+  const isMobile = bp === "mobile";
+  const isTablet  = bp === "tablet";
+
   const [items, setItems] = useState<BacklogItem[]>(initialItems);
   const [dragging, setDragging] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<Status | null>(null);
@@ -151,13 +156,18 @@ export default function BacklogPage({ initialItems }: Props) {
       </div>
 
       {/* Kanban Board */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, alignItems: "start" }}>
+      <div
+        className={isMobile ? "kanban-scroll" : ""}
+        style={isMobile ? {} : isTablet
+          ? { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "start" }
+          : { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, alignItems: "start" }}
+      >
         {COLUMNS.map(col => {
           const colItems = byStatus(col.key);
           return (
             <div
               key={col.key}
-              className={dragOver === col.key ? "col-drop-active" : ""}
+              className={[dragOver === col.key ? "col-drop-active" : "", isMobile ? "kanban-col-snap" : ""].join(" ").trim()}
               onDragOver={e => { e.preventDefault(); setDragOver(col.key); }}
               onDragLeave={() => setDragOver(null)}
               onDrop={() => handleDrop(col.key)}
@@ -255,7 +265,7 @@ export default function BacklogPage({ initialItems }: Props) {
                 <label style={{ fontSize: 11, color: "#64748b", display: "block", marginBottom: 4 }}>TITLE *</label>
                 <input className="input-dark" placeholder="Task title" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div className="form-grid-2">
                 <div>
                   <label style={{ fontSize: 11, color: "#64748b", display: "block", marginBottom: 4 }}>PRIORITY</label>
                   <select className="input-dark" value={form.priority} onChange={e => setForm(f => ({ ...f, priority: +e.target.value }))}>

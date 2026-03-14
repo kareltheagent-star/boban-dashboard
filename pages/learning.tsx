@@ -323,7 +323,7 @@ export default function LearningPage({ items, error }: Props) {
             gap: 12,
           }}
         >
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div className="form-grid-2">
             <div>
               <label style={labelSt}>Topic *</label>
               <input
@@ -355,7 +355,7 @@ export default function LearningPage({ items, error }: Props) {
             />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div className="form-grid-2">
             <div>
               <label style={labelSt}>Status</label>
               <select

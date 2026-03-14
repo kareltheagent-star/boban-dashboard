@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import '../styles/globals.css';
 import { AuthGate } from '../components/AuthGate';
+import { BottomNav } from '../components/BottomNav';
 
 const C = {
   cardBg:    "#17243a",
@@ -34,13 +35,12 @@ const NAV = [
 
 function Sidebar({ currentPath }: { currentPath: string }) {
   return (
-    <aside style={{
+    <aside className="nav-sidebar" style={{
       width: 200,
       minHeight: "100vh",
       background: C.cardBg,
       borderRight: `1px solid ${C.border}`,
       padding: "20px 12px",
-      display: "flex",
       flexDirection: "column",
       gap: 8,
       flexShrink: 0,
@@ -106,14 +106,16 @@ export default function BobanDashboardApp({ Component, pageProps }: AppProps) {
     <>
       <Head>
         <title>Boban Dashboard</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
       </Head>
       <AuthGate>
         <div style={{ display: "flex", minHeight: "100vh", background: "#0d1526", color: C.textMain, fontFamily: "var(--font-inter, 'Inter', system-ui, sans-serif)" }}>
           <Sidebar currentPath={router.pathname} />
-          <main style={{ flex: 1, padding: "24px 28px", minWidth: 0 }}>
+          <main className="pages-main" style={{ flex: 1 }}>
             <Component {...pageProps} />
           </main>
         </div>
+        <BottomNav currentPath={router.pathname} />
       </AuthGate>
     </>
   );
