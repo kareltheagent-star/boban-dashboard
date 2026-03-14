@@ -55,8 +55,19 @@ create index if not exists agent_learning_backlog_priority_idx on agent_learning
 -- ── Bertik: betting intelligence ────────────────────────────────────────────
 create table if not exists betting_recommendations (
   id             bigserial primary key,
-  event_name     text not null,
-  selection      text not null,
+
+  -- Structured event fields (preferred over legacy event_name/selection)
+  sport          text,                  -- "soccer" | "basketball" | "tennis" | …
+  league         text,                  -- "EPL" | "NBA" | "UCL" | …
+  event_id       text,                  -- "soccer-epl-2026-03-15-ars-che"
+  market_type    text,                  -- "h2h" | "totals" | "btts" | "spreads"
+  selection_name text,                  -- "Arsenal" | "Over 2.5" | "Yes"
+
+  -- Legacy plain-text fallbacks (kept for backward compatibility)
+  event_name     text,
+  selection      text,
+
+  -- Core betting fields
   odds           numeric(6,3) not null,
   edge_pct       numeric(5,2),
   ev_pct         numeric(5,2),
@@ -71,6 +82,16 @@ create table if not exists betting_recommendations (
   notes          text
 );
 
-create index if not exists betting_recs_status_idx on betting_recommendations(status);
-create index if not exists betting_recs_rec_at_idx on betting_recommendations(recommended_at desc);
+create index if not exists betting_recs_status_idx     on betting_recommendations(status);
+create index if not exists betting_recs_sport_idx      on betting_recommendations(sport);
+create index if not exists betting_recs_event_id_idx   on betting_recommendations(event_id);
+create index if not exists betting_recs_rec_at_idx     on betting_recommendations(recommended_at desc);
 create index if not exists betting_recs_settled_at_idx on betting_recommendations(settled_at desc);
+
+-- Migration: add new columns to an existing table
+-- alter table betting_recommendations
+--   add column if not exists sport          text,
+--   add column if not exists league         text,
+--   add column if not exists event_id       text,
+--   add column if not exists market_type    text,
+--   add column if not exists selection_name text;

@@ -17,8 +17,15 @@ const BertikChart = dynamic(() => import("../components/BertikChart"), {
 // ── Types ──────────────────────────────────────────────────────────────────
 export interface BettingRec {
   id: number;
-  event_name: string;
-  selection: string;
+  // Legacy plain-text fields (still used as fallback)
+  event_name: string | null;
+  selection: string | null;
+  // Structured fields
+  sport: string | null;          // "soccer" | "basketball" | …
+  league: string | null;         // "EPL" | "NBA" | "UCL" | …
+  event_id: string | null;       // "soccer-epl-2026-03-15-ars-che"
+  market_type: string | null;    // "h2h" | "totals" | "btts" | "spreads"
+  selection_name: string | null; // "Arsenal" | "Over 2.5" | "Yes"
   odds: number;
   edge_pct: number | null;
   ev_pct: number | null;
@@ -68,6 +75,161 @@ function fmt(n: number | null, decimals = 1, suffix = ""): string {
 function fmtOdds(n: number | null): string {
   if (n == null) return "—";
   return n.toFixed(2);
+}
+
+// ── Sport metadata ─────────────────────────────────────────────────────────
+const SPORT_INFO: Record<string, { icon: string; color: string; bg: string }> = {
+  soccer:     { icon: "⚽", color: "#34d399", bg: "rgba(52,211,153,0.12)" },
+  football:   { icon: "🏈", color: "#f97316", bg: "rgba(249,115,22,0.12)" },
+  basketball: { icon: "🏀", color: "#fb923c", bg: "rgba(251,146,60,0.12)" },
+  tennis:     { icon: "🎾", color: "#a78bfa", bg: "rgba(167,139,250,0.12)" },
+  baseball:   { icon: "⚾", color: "#60a5fa", bg: "rgba(96,165,250,0.12)" },
+  hockey:     { icon: "🏒", color: "#94a3b8", bg: "rgba(148,163,184,0.12)" },
+};
+
+// ── Team abbreviation → full name lookup ────────────────────────────────────
+const TEAM_NAMES: Record<string, string> = {
+  // EPL
+  ars: "Arsenal",    che: "Chelsea",    mci: "Man City",    mun: "Man Utd",
+  liv: "Liverpool",  tot: "Spurs",      avl: "Aston Villa", new: "Newcastle",
+  eve: "Everton",    whu: "West Ham",   bha: "Brighton",    bur: "Burnley",
+  wol: "Wolves",     bou: "Bournemouth",ful: "Fulham",      cry: "Crystal P.",
+  // La Liga
+  bar: "Barcelona",  rma: "Real Madrid",atm: "Atlético",    sev: "Sevilla",
+  val: "Valencia",   bet: "Betis",      ath: "Athletic",
+  // Bundesliga
+  bay: "Bayern",     dor: "Dortmund",   rbl: "Leipzig",     bayer: "Leverkusen",
+  // Serie A
+  juv: "Juventus",   int: "Inter",      acm: "AC Milan",    nap: "Napoli",
+  rom: "Roma",       laz: "Lazio",
+  // Ligue 1
+  psg: "PSG",        mar: "Marseille",  oly: "Lyon",
+  // NBA
+  lal: "Lakers",     bos: "Celtics",    gsw: "Warriors",    mil: "Bucks",
+  bkn: "Nets",       phi: "76ers",      mia: "Heat",        den: "Nuggets",
+  phx: "Suns",       dal: "Mavericks",  mem: "Grizzlies",   nop: "Pelicans",
+  // NFL
+  kcc: "Chiefs",     buf: "Bills",      sfo: "49ers",       phi_e: "Eagles",
+};
+
+function capWords(s: string): string {
+  return s.split(/[\s_-]+/)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
+}
+
+// ── Parse "soccer-epl-2026-03-15-ars-che" → { sport, league, matchLabel } ──
+function parseEventId(eventId: string | null): { sport: string; league: string; matchLabel: string } {
+  if (!eventId) return { sport: "", league: "", matchLabel: "" };
+
+  const parts = eventId.split("-");
+  let idx = 0;
+
+  // Part 0: sport
+  const sport = parts[idx++] ?? "";
+
+  // Part 1: league code if it doesn't look like a year (4-digit number)
+  let league = "";
+  if (parts[idx] && !/^\d{4}$/.test(parts[idx])) {
+    league = (parts[idx++] ?? "").toUpperCase();
+  }
+
+  // Skip YYYY-MM-DD (3 parts)
+  idx += 3;
+
+  // Remaining: team codes — expect exactly 2 tokens (each may be multi-word)
+  const teamParts = parts.slice(idx);
+  let t1 = "", t2 = "";
+  if (teamParts.length >= 2) {
+    t1 = teamParts[0];
+    t2 = teamParts.slice(1).join("-");
+  } else if (teamParts.length === 1) {
+    t1 = teamParts[0];
+  }
+
+  const name1 = TEAM_NAMES[t1] ?? capWords(t1);
+  const name2 = t2 ? (TEAM_NAMES[t2] ?? capWords(t2)) : "";
+  const matchLabel = name2 ? `${name1} v ${name2}` : name1;
+
+  return { sport, league, matchLabel };
+}
+
+// ── Parse market_type + selection_name → human-readable bet type ───────────
+function parseBetType(marketType: string | null, selectionName: string | null): string {
+  const sel = (selectionName ?? "").trim();
+  switch ((marketType ?? "").toLowerCase()) {
+    case "h2h":
+    case "moneyline":
+      return sel || "Match Result";
+    case "totals":
+    case "over_under":
+      return sel || "Over/Under";
+    case "btts":
+    case "both_teams_score":
+      return sel ? `BTTS ${sel}` : "BTTS";
+    case "spreads":
+    case "handicap":
+      return sel || "Handicap";
+    case "draw_no_bet":
+      return sel ? `DNB: ${sel}` : "Draw No Bet";
+    case "first_goalscorer":
+      return sel ? `FGS: ${sel}` : "First Goal";
+    default:
+      return sel || (marketType ? capWords(marketType) : "—");
+  }
+}
+
+// ── Resolve display fields from a rec (handles old vs new schema) ───────────
+interface ParsedRec {
+  sport: string;
+  league: string;
+  matchLabel: string;
+  betType: string;
+}
+
+function parsedRec(rec: BettingRec): ParsedRec {
+  // Start with explicit DB columns
+  let sport  = rec.sport ?? "";
+  let league = rec.league ?? "";
+
+  // Fall back to parsing event_id
+  const fromId = parseEventId(rec.event_id);
+  if (!sport)  sport  = fromId.sport;
+  if (!league) league = fromId.league;
+
+  // Match label: prefer parsed event_id, fall back to legacy event_name
+  const matchLabel = fromId.matchLabel || (rec.event_name ?? "—");
+
+  // Bet type: prefer structured fields, fall back to legacy selection
+  const betType =
+    (rec.market_type || rec.selection_name)
+      ? parseBetType(rec.market_type, rec.selection_name)
+      : (rec.selection ?? "—");
+
+  return { sport, league, matchLabel, betType };
+}
+
+// ── Sport pill ──────────────────────────────────────────────────────────────
+function SportTag({ sport, league }: { sport: string; league: string }) {
+  const info = SPORT_INFO[sport.toLowerCase()] ?? { icon: "🎲", color: "#7a9ab8", bg: "rgba(122,154,184,0.12)" };
+  const label = league
+    ? `${info.icon} ${league}`
+    : sport ? `${info.icon} ${capWords(sport)}` : "—";
+  return (
+    <span style={{
+      display: "inline-block",
+      fontSize: 11,
+      fontWeight: 600,
+      borderRadius: 5,
+      padding: "2px 8px",
+      color: info.color,
+      background: info.bg,
+      whiteSpace: "nowrap",
+      letterSpacing: "0.04em",
+    }}>
+      {label}
+    </span>
+  );
 }
 
 const CONF_STYLE: Record<string, { color: string; bg: string }> = {
@@ -191,22 +353,38 @@ export default function BertikPage({ active, settled, chartData, stats, tableErr
             fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
             lineHeight: 1.6,
           }}>{`CREATE TABLE betting_recommendations (
-  id bigserial PRIMARY KEY,
-  event_name text NOT NULL,
-  selection text NOT NULL,
-  odds numeric(6,3) NOT NULL,
-  edge_pct numeric(5,2),
-  ev_pct numeric(5,2),
-  stake_pct numeric(5,2),
-  confidence text CHECK (confidence IN ('high','medium','low')) DEFAULT 'medium',
-  status text NOT NULL
-    CHECK (status IN ('recommended','won','lost','push','void'))
-    DEFAULT 'recommended',
-  profit_loss numeric(8,3),
+  id             bigserial PRIMARY KEY,
+  -- Structured fields (preferred)
+  sport          text,                  -- "soccer", "basketball"
+  league         text,                  -- "EPL", "NBA", "UCL"
+  event_id       text,                  -- "soccer-epl-2026-03-15-ars-che"
+  market_type    text,                  -- "h2h", "totals", "btts"
+  selection_name text,                  -- "Arsenal", "Over 2.5", "Yes"
+  -- Legacy plain-text fallbacks
+  event_name     text,
+  selection      text,
+  -- Core fields
+  odds           numeric(6,3) NOT NULL,
+  edge_pct       numeric(5,2),
+  ev_pct         numeric(5,2),
+  stake_pct      numeric(5,2),
+  confidence     text CHECK (confidence IN ('high','medium','low')) DEFAULT 'medium',
+  status         text NOT NULL
+                   CHECK (status IN ('recommended','won','lost','push','void'))
+                   DEFAULT 'recommended',
+  profit_loss    numeric(8,3),
   recommended_at timestamptz NOT NULL DEFAULT now(),
-  settled_at timestamptz,
-  notes text
-);`}</pre>
+  settled_at     timestamptz,
+  notes          text
+);
+
+-- If table already exists, add missing columns:
+-- ALTER TABLE betting_recommendations
+--   ADD COLUMN IF NOT EXISTS sport text,
+--   ADD COLUMN IF NOT EXISTS league text,
+--   ADD COLUMN IF NOT EXISTS event_id text,
+--   ADD COLUMN IF NOT EXISTS market_type text,
+--   ADD COLUMN IF NOT EXISTS selection_name text;`}</pre>
         </div>
       )}
 
@@ -255,27 +433,36 @@ export default function BertikPage({ active, settled, chartData, stats, tableErr
             </p>
           ) : (
             <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", minWidth: 640, borderCollapse: "collapse" }}>
+              <table style={{ width: "100%", minWidth: 700, borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ background: C.itemBg }}>
-                    <th style={thStyle}>Event</th>
-                    <th style={thStyle}>Selection</th>
+                    <th style={thStyle}>Sport</th>
+                    <th style={thStyle}>Match</th>
+                    <th style={thStyle}>Bet type</th>
                     <th style={thStyle}>Odds</th>
                     <th style={thStyle}>Edge %</th>
                     <th style={thStyle}>EV %</th>
                     <th style={thStyle}>Stake %</th>
                     <th style={thStyle}>Confidence</th>
-                    <th style={thStyle}>Recommended at</th>
+                    <th style={thStyle}>Rec&apos;d at</th>
                   </tr>
                 </thead>
                 <tbody>
                   {active.map(rec => {
+                    const p    = parsedRec(rec);
                     const conf = rec.confidence ?? "medium";
-                    const cs = CONF_STYLE[conf] ?? CONF_STYLE.medium;
+                    const cs   = CONF_STYLE[conf] ?? CONF_STYLE.medium;
                     return (
                       <tr key={rec.id} style={{ transition: "background 0.1s" }}>
-                        <td style={tdStyle}>{rec.event_name}</td>
-                        <td style={{ ...tdStyle, fontWeight: 600 }}>{rec.selection}</td>
+                        <td style={tdStyle}>
+                          <SportTag sport={p.sport} league={p.league} />
+                        </td>
+                        <td style={{ ...tdStyle, fontWeight: 600, maxWidth: 200 }}>
+                          {p.matchLabel}
+                        </td>
+                        <td style={{ ...tdStyle, color: C.textSec }}>
+                          {p.betType}
+                        </td>
                         <td style={tdMuted}>{fmtOdds(rec.odds)}</td>
                         <td style={{ ...tdMuted, color: rec.edge_pct != null && rec.edge_pct > 0 ? "#34d399" : C.textSec }}>
                           {rec.edge_pct != null ? `${rec.edge_pct.toFixed(1)}%` : "—"}
@@ -286,10 +473,10 @@ export default function BertikPage({ active, settled, chartData, stats, tableErr
                         <td style={tdMuted}>
                           {rec.stake_pct != null ? `${rec.stake_pct.toFixed(1)}%` : "—"}
                         </td>
-                        <td style={{ ...tdStyle }}>
+                        <td style={tdStyle}>
                           <Badge label={conf} color={cs.color} bg={cs.bg} />
                         </td>
-                        <td style={tdMuted}>
+                        <td style={{ ...tdMuted, whiteSpace: "nowrap" }}>
                           {new Date(rec.recommended_at).toLocaleString()}
                         </td>
                       </tr>
@@ -320,26 +507,38 @@ export default function BertikPage({ active, settled, chartData, stats, tableErr
             </p>
           ) : (
             <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", minWidth: 560, borderCollapse: "collapse" }}>
+              <table style={{ width: "100%", minWidth: 600, borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ background: C.itemBg }}>
-                    <th style={thStyle}>Event</th>
-                    <th style={thStyle}>Selection</th>
+                    <th style={thStyle}>Sport</th>
+                    <th style={thStyle}>Match</th>
+                    <th style={thStyle}>Bet type</th>
                     <th style={thStyle}>Odds</th>
                     <th style={thStyle}>Outcome</th>
-                    <th style={thStyle}>Profit / Loss</th>
+                    <th style={thStyle}>P / L</th>
                     <th style={thStyle}>Edge was</th>
                     <th style={thStyle}>Settled at</th>
                   </tr>
                 </thead>
                 <tbody>
                   {settled.map(rec => {
-                    const os = OUTCOME_STYLE[rec.status] ?? OUTCOME_STYLE.void;
-                    const plColor = rec.profit_loss == null ? C.textSec : rec.profit_loss > 0 ? "#34d399" : rec.profit_loss < 0 ? "#f87171" : C.textSec;
+                    const p       = parsedRec(rec);
+                    const os      = OUTCOME_STYLE[rec.status] ?? OUTCOME_STYLE.void;
+                    const plColor = rec.profit_loss == null ? C.textSec
+                      : rec.profit_loss > 0 ? "#34d399"
+                      : rec.profit_loss < 0 ? "#f87171"
+                      : C.textSec;
                     return (
                       <tr key={rec.id}>
-                        <td style={tdStyle}>{rec.event_name}</td>
-                        <td style={{ ...tdStyle, fontWeight: 600 }}>{rec.selection}</td>
+                        <td style={tdStyle}>
+                          <SportTag sport={p.sport} league={p.league} />
+                        </td>
+                        <td style={{ ...tdStyle, fontWeight: 600, maxWidth: 180 }}>
+                          {p.matchLabel}
+                        </td>
+                        <td style={{ ...tdStyle, color: C.textSec }}>
+                          {p.betType}
+                        </td>
                         <td style={tdMuted}>{fmtOdds(rec.odds)}</td>
                         <td style={tdStyle}>
                           <Badge label={rec.status} color={os.color} bg={os.bg} />
@@ -350,7 +549,7 @@ export default function BertikPage({ active, settled, chartData, stats, tableErr
                         <td style={{ ...tdMuted, color: rec.edge_pct != null && rec.edge_pct > 0 ? "#34d399" : C.textSec }}>
                           {rec.edge_pct != null ? `${rec.edge_pct.toFixed(1)}%` : "—"}
                         </td>
-                        <td style={tdMuted}>
+                        <td style={{ ...tdMuted, whiteSpace: "nowrap" }}>
                           {rec.settled_at ? new Date(rec.settled_at).toLocaleString() : "—"}
                         </td>
                       </tr>
