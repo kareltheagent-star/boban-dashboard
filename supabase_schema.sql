@@ -51,3 +51,26 @@ create table if not exists agent_learning_backlog (
 
 create index if not exists agent_learning_backlog_status_idx on agent_learning_backlog(status);
 create index if not exists agent_learning_backlog_priority_idx on agent_learning_backlog(priority);
+
+-- ── Bertik: betting intelligence ────────────────────────────────────────────
+create table if not exists betting_recommendations (
+  id             bigserial primary key,
+  event_name     text not null,
+  selection      text not null,
+  odds           numeric(6,3) not null,
+  edge_pct       numeric(5,2),
+  ev_pct         numeric(5,2),
+  stake_pct      numeric(5,2),
+  confidence     text check (confidence in ('high','medium','low')) default 'medium',
+  status         text not null
+                   check (status in ('recommended','won','lost','push','void'))
+                   default 'recommended',
+  profit_loss    numeric(8,3),
+  recommended_at timestamptz not null default now(),
+  settled_at     timestamptz,
+  notes          text
+);
+
+create index if not exists betting_recs_status_idx on betting_recommendations(status);
+create index if not exists betting_recs_rec_at_idx on betting_recommendations(recommended_at desc);
+create index if not exists betting_recs_settled_at_idx on betting_recommendations(settled_at desc);

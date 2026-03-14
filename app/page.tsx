@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback, FormEvent } from "react";
 import type { CSSProperties } from "react";
-import { AuthGate } from "../components/AuthGate";
 import { supabase } from "../lib/supabaseClient";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -418,7 +417,6 @@ export default function HomePage() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <AuthGate>
       <div style={{ minHeight: "100vh", background: C.pageBg, color: C.textMain, fontFamily: "var(--font-inter, 'Inter', system-ui, sans-serif)", fontSize: 15 }}>
 
         {/* OAuth expiry warning banner */}
@@ -853,6 +851,5 @@ export default function HomePage() {
         )}
 
       </div>
-    </AuthGate>
   );
 }

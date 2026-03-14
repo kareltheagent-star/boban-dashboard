@@ -1,9 +1,7 @@
-import type { AppProps } from 'next/app';
-import Head from 'next/head';
-import Link from 'next/link';
-import { useRouter } from 'next/router';
-import '../styles/globals.css';
-import { AuthGate } from '../components/AuthGate';
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 const C = {
   cardBg:    "#17243a",
@@ -13,7 +11,7 @@ const C = {
   textMuted: "#4d6a85",
 };
 
-const NAV = [
+const NAV: { section: string; emoji: string; links: { href: string; label: string }[] }[] = [
   {
     section: "Boban",
     emoji: "🤖",
@@ -32,7 +30,9 @@ const NAV = [
   },
 ];
 
-function Sidebar({ currentPath }: { currentPath: string }) {
+export function NavSidebar() {
+  const path = usePathname();
+
   return (
     <aside style={{
       width: 200,
@@ -71,7 +71,7 @@ function Sidebar({ currentPath }: { currentPath: string }) {
             {group.emoji} {group.section}
           </div>
           {group.links.map(({ href, label }) => {
-            const active = currentPath === href;
+            const active = path === href;
             return (
               <Link
                 key={href}
@@ -96,25 +96,5 @@ function Sidebar({ currentPath }: { currentPath: string }) {
         </div>
       ))}
     </aside>
-  );
-}
-
-export default function BobanDashboardApp({ Component, pageProps }: AppProps) {
-  const router = useRouter();
-
-  return (
-    <>
-      <Head>
-        <title>Boban Dashboard</title>
-      </Head>
-      <AuthGate>
-        <div style={{ display: "flex", minHeight: "100vh", background: "#0d1526", color: C.textMain, fontFamily: "var(--font-inter, 'Inter', system-ui, sans-serif)" }}>
-          <Sidebar currentPath={router.pathname} />
-          <main style={{ flex: 1, padding: "24px 28px", minWidth: 0 }}>
-            <Component {...pageProps} />
-          </main>
-        </div>
-      </AuthGate>
-    </>
   );
 }
