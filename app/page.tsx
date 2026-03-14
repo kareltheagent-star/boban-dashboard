@@ -1,8 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, FormEvent } from "react";
+import type { CSSProperties } from "react";
 import { AuthGate } from "../components/AuthGate";
 import { supabase } from "../lib/supabaseClient";
+
+// ── Types ──────────────────────────────────────────────────────────────────
+type BacklogStatus = "pending" | "in_progress" | "blocked" | "done";
+type LearningStatus = "pending" | "in_progress" | "done" | "blocked";
 
 interface AgentStatusRow {
   id?: number;
@@ -28,338 +33,787 @@ interface BacklogItem {
   title: string;
   description?: string;
   priority: number;
-  status: "pending" | "in_progress" | "blocked" | "done";
+  status: BacklogStatus;
   created_by?: string;
   tags?: string[];
   notes?: string;
   created_at: string;
 }
 
+interface LearningItem {
+  id: number;
+  topic: string;
+  why: string | null;
+  priority: number;
+  status: LearningStatus;
+  notes: string | null;
+  created_at: string;
+}
+
+// ── Constants ──────────────────────────────────────────────────────────────
+const KANBAN_COLUMNS: { key: BacklogStatus; label: string; dot: string }[] = [
+  { key: "pending",     label: "Pending",     dot: "#94a3b8" },
+  { key: "in_progress", label: "In Progress", dot: "#60a5fa" },
+  { key: "blocked",     label: "Blocked",     dot: "#f87171" },
+  { key: "done",        label: "Done",        dot: "#34d399" },
+];
+
+const PRIORITY_BADGE: Record<number, CSSProperties> = {
+  1: { background: "rgba(239,68,68,0.2)",   color: "#fca5a5", outline: "1px solid rgba(239,68,68,0.4)" },
+  2: { background: "rgba(249,115,22,0.2)",  color: "#fdba74", outline: "1px solid rgba(249,115,22,0.4)" },
+  3: { background: "rgba(234,179,8,0.2)",   color: "#fde047", outline: "1px solid rgba(234,179,8,0.4)" },
+  4: { background: "rgba(59,130,246,0.2)",  color: "#93c5fd", outline: "1px solid rgba(59,130,246,0.4)" },
+  5: { background: "rgba(100,116,139,0.2)", color: "#94a3b8", outline: "1px solid rgba(100,116,139,0.4)" },
+};
+
+const BLANK_TASK: { title: string; description: string; priority: number; status: BacklogStatus; tags: string; notes: string } = {
+  title: "", description: "", priority: 3, status: "pending", tags: "", notes: "",
+};
+
+const BLANK_LEARN: { topic: string; why: string; priority: number; status: LearningStatus; notes: string } = {
+  topic: "", why: "", priority: 3, status: "pending", notes: "",
+};
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function fixText(s: string | null | undefined): string {
+  if (!s) return "";
+  return s
+    .replace(/Â·/g, "·")
+    .replace(/â€"/g, "\u2014")
+    .replace(/â€¦/g, "\u2026")
+    .replace(/â€œ/g, "\u201C")
+    .replace(/â€\u009D/g, "\u201D")
+    .replace(/â€˜/g, "\u2018")
+    .replace(/â€™/g, "\u2019");
+}
+
+function gaugeClass(val: number | null, warnAt: number, dangerAt: number): string {
+  if (val == null) return "";
+  if (val < warnAt) return "ok";
+  if (val < dangerAt) return "warn";
+  return "danger";
+}
+
+// ── Shared style objects ───────────────────────────────────────────────────
+const card: CSSProperties = {
+  background: "rgba(15,23,42,0.7)",
+  border: "1px solid #1e293b",
+  borderRadius: 10,
+  padding: 14,
+};
+
+const labelSt: CSSProperties = {
+  display: "block",
+  fontSize: 10,
+  fontWeight: 600,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  color: "#475569",
+  marginBottom: 4,
+};
+
+const btnPrimary: CSSProperties = {
+  background: "#6366f1",
+  color: "#fff",
+  border: "none",
+  padding: "7px 14px",
+  borderRadius: 6,
+  cursor: "pointer",
+  fontSize: 12,
+  fontWeight: 500,
+  letterSpacing: "0.04em",
+};
+
+const btnGhost: CSSProperties = {
+  background: "transparent",
+  color: "#64748b",
+  border: "1px solid #1e293b",
+  padding: "7px 14px",
+  borderRadius: 6,
+  cursor: "pointer",
+  fontSize: 12,
+};
+
+const btnDanger: CSSProperties = {
+  background: "transparent",
+  color: "#f87171",
+  border: "1px solid #1e293b",
+  padding: "6px 12px",
+  borderRadius: 6,
+  cursor: "pointer",
+  fontSize: 11,
+};
+
+// ── MetricCard ─────────────────────────────────────────────────────────────
+function MetricCard({
+  label, value, gaugeVal, warnAt, dangerAt, loading, warn,
+}: {
+  label: string;
+  value: string;
+  gaugeVal: number | null;
+  warnAt: number;
+  dangerAt: number;
+  loading: boolean;
+  warn?: boolean;
+}) {
+  const cls = gaugeClass(gaugeVal, warnAt, dangerAt);
+  return (
+    <div style={card}>
+      <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "#64748b", marginBottom: 6 }}>
+        {label}
+      </div>
+      {loading ? (
+        <div style={{ height: 24, borderRadius: 4, background: "#1e293b", marginBottom: 6 }} />
+      ) : (
+        <div
+          style={{
+            fontSize: 22,
+            fontWeight: 700,
+            letterSpacing: "-0.02em",
+            fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+            color: warn ? "#f87171" : "#f1f5f9",
+            marginBottom: 8,
+            lineHeight: 1,
+          }}
+        >
+          {value}
+        </div>
+      )}
+      <div className="gauge-track">
+        <div
+          className={`gauge-fill ${cls}`}
+          style={{ width: `${Math.min(Math.max(gaugeVal ?? 0, 0), 100)}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ── Main Page ──────────────────────────────────────────────────────────────
 export default function HomePage() {
-  const [status, setStatus] = useState<AgentStatusRow | null>(null);
+  const [agentStatus, setAgentStatus] = useState<AgentStatusRow | null>(null);
   const [events, setEvents] = useState<AgentEventRow[]>([]);
-  const [activeBacklog, setActiveBacklog] = useState<BacklogItem | null>(null);
+  const [backlogItems, setBacklogItems] = useState<BacklogItem[]>([]);
+  const [learningItems, setLearningItems] = useState<LearningItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [dateRange, setDateRange] = useState<"24h" | "7d" | "30d" | "all">("24h");
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  // Kanban state
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState<BacklogStatus | null>(null);
+  const [showTaskForm, setShowTaskForm] = useState(false);
+  const [editTask, setEditTask] = useState<BacklogItem | null>(null);
+  const [taskForm, setTaskForm] = useState(BLANK_TASK);
+  const [savingTask, setSavingTask] = useState(false);
+
+  // Learning state
+  const [learningExpanded, setLearningExpanded] = useState(false);
+  const [showAddLearn, setShowAddLearn] = useState(false);
+  const [learnForm, setLearnForm] = useState(BLANK_LEARN);
+  const [savingLearn, setSavingLearn] = useState(false);
+  const [learnError, setLearnError] = useState<string | null>(null);
+
+  // ── Data loading ─────────────────────────────────────────────────────────
+  const load = useCallback(async () => {
+    if (!supabase) {
+      setError("Supabase not configured — set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.");
+      setLoading(false);
+      return;
+    }
+    try {
+      setError(null);
+      const [statusRes, eventsRes, backlogRes, learnRes] = await Promise.all([
+        supabase.from("agent_status").select("*").order("ts", { ascending: false }).limit(1).maybeSingle(),
+        supabase.from("agent_events").select("*").order("ts", { ascending: false }).limit(5),
+        supabase.from("agent_backlog").select("*").order("priority", { ascending: true }).order("created_at", { ascending: false }),
+        supabase.from("agent_learning_backlog").select("*").order("priority", { ascending: true }).order("created_at", { ascending: false }),
+      ]);
+      if (statusRes.error) throw statusRes.error;
+      if (eventsRes.error) throw eventsRes.error;
+      if (backlogRes.error) throw backlogRes.error;
+      if (learnRes.error) throw learnRes.error;
+
+      setAgentStatus(statusRes.data ?? null);
+      setEvents(eventsRes.data ?? []);
+      setBacklogItems(backlogRes.data ?? []);
+      setLearningItems(learnRes.data ?? []);
+      setLastUpdated(new Date());
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to load data";
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    async function load() {
-      if (!supabase) {
-        setError(
-          "Supabase client not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY."
-        );
-        setLoading(false);
-        return;
-      }
-
-      try {
-        setLoading(true);
-        setError(null);
-
-        let since: string | null = null;
-        const now = Date.now();
-        if (dateRange === "24h") {
-          since = new Date(now - 24 * 60 * 60 * 1000).toISOString();
-        } else if (dateRange === "7d") {
-          since = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
-        } else if (dateRange === "30d") {
-          since = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString();
-        }
-
-        const [statusResult, eventsResult, inProgressResult, pendingResult] = await Promise.all([
-          supabase
-            .from("agent_status")
-            .select("*")
-            .order("ts", { ascending: false })
-            .limit(1)
-            .maybeSingle(),
-          (since
-            ? supabase
-                .from("agent_events")
-                .select("*")
-                .gte("ts", since)
-            : supabase.from("agent_events").select("*"))
-            .order("ts", { ascending: false })
-            .limit(50),
-          supabase
-            .from("agent_backlog")
-            .select("*")
-            .eq("status", "in_progress")
-            .order("priority", { ascending: true })
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle(),
-          supabase
-            .from("agent_backlog")
-            .select("*")
-            .eq("status", "pending")
-            .order("priority", { ascending: true })
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle(),
-        ]);
-
-        if (statusResult.error) throw statusResult.error;
-        if (eventsResult.error) throw eventsResult.error;
-        if (inProgressResult.error) throw inProgressResult.error;
-        if (pendingResult.error) throw pendingResult.error;
-
-        setStatus(statusResult.data ?? null);
-        setEvents(eventsResult.data ?? []);
-
-        // Decide which backlog task is "active": prefer in_progress, otherwise the top pending one.
-        const active = (inProgressResult.data as BacklogItem | null) ?? (pendingResult.data as BacklogItem | null) ?? null;
-        setActiveBacklog(active);
-      } catch (err: any) {
-        console.error("[boban-dashboard] Failed to load status page", err);
-        setError(err.message ?? "Failed to load status data");
-      } finally {
-        setLoading(false);
-      }
-    }
-
     load();
+    const timer = setInterval(load, 30_000);
+    return () => clearInterval(timer);
+  }, [load]);
 
-    const interval = setInterval(load, 30_000);
-    return () => clearInterval(interval);
-  }, [dateRange]);
+  // ── Kanban handlers ───────────────────────────────────────────────────────
+  const byStatus = (s: BacklogStatus) =>
+    backlogItems.filter(i => i.status === s).sort((a, b) => a.priority - b.priority);
 
-  const lastUpdated = status ? new Date(status.ts) : null;
+  const handleDrop = async (col: BacklogStatus) => {
+    if (!dragging || !supabase) return;
+    setDragOver(null);
+    const item = backlogItems.find(i => i.id === dragging);
+    if (!item || item.status === col) { setDragging(null); return; }
+    setBacklogItems(prev => prev.map(i => i.id === dragging ? { ...i, status: col } : i));
+    await supabase.from("agent_backlog").update({ status: col }).eq("id", dragging);
+    setDragging(null);
+  };
 
+  const openEditTask = (item: BacklogItem) => {
+    setEditTask(item);
+    setTaskForm({
+      title: item.title,
+      description: item.description ?? "",
+      priority: item.priority,
+      status: item.status,
+      tags: (item.tags ?? []).join(", "),
+      notes: item.notes ?? "",
+    });
+    setShowTaskForm(true);
+  };
+
+  const handleSaveTask = async () => {
+    if (!taskForm.title.trim() || !supabase) return;
+    setSavingTask(true);
+    const payload = {
+      title: taskForm.title,
+      description: taskForm.description,
+      priority: taskForm.priority,
+      status: taskForm.status,
+      tags: taskForm.tags.split(",").map(t => t.trim()).filter(Boolean),
+      notes: taskForm.notes,
+    };
+    if (editTask) {
+      await supabase.from("agent_backlog").update(payload).eq("id", editTask.id);
+      setBacklogItems(prev => prev.map(i => i.id === editTask.id ? { ...i, ...payload } : i));
+    } else {
+      const { data } = await supabase.from("agent_backlog").insert({ ...payload, created_by: "human" }).select().single();
+      if (data) setBacklogItems(prev => [...prev, data]);
+    }
+    setSavingTask(false);
+    setShowTaskForm(false);
+    setEditTask(null);
+    setTaskForm(BLANK_TASK);
+  };
+
+  const handleDeleteTask = async (id: string) => {
+    if (!supabase) return;
+    await supabase.from("agent_backlog").delete().eq("id", id);
+    setBacklogItems(prev => prev.filter(i => i.id !== id));
+    setShowTaskForm(false);
+    setEditTask(null);
+  };
+
+  // ── Learning handlers ─────────────────────────────────────────────────────
+  const handleAddLearn = async (e: FormEvent) => {
+    e.preventDefault();
+    setLearnError(null);
+    if (!supabase) { setLearnError("Supabase not configured."); return; }
+    if (!learnForm.topic.trim()) { setLearnError("Topic is required."); return; }
+    setSavingLearn(true);
+    try {
+      const { data, error: err } = await supabase
+        .from("agent_learning_backlog")
+        .insert({
+          topic: learnForm.topic.trim(),
+          why: learnForm.why.trim() || null,
+          priority: learnForm.priority,
+          status: learnForm.status,
+          notes: learnForm.notes.trim() || null,
+        })
+        .select().single();
+      if (err) { setLearnError(err.message); }
+      else if (data) {
+        setLearningItems(prev =>
+          [...prev, data].sort((a, b) =>
+            a.priority !== b.priority
+              ? a.priority - b.priority
+              : new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          )
+        );
+        setLearnForm(BLANK_LEARN);
+        setShowAddLearn(false);
+      }
+    } catch (err: unknown) {
+      setLearnError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setSavingLearn(false);
+    }
+  };
+
+  // ── Derived values ────────────────────────────────────────────────────────
+  const activeTask =
+    backlogItems.find(i => i.status === "in_progress") ??
+    backlogItems.find(i => i.status === "pending") ??
+    null;
+
+  const pendingLearn = learningItems.filter(i => i.status !== "done").length;
+  const doneLearn = learningItems.filter(i => i.status === "done").length;
+  const oauthWarn =
+    agentStatus?.oauth_expires_days != null && agentStatus.oauth_expires_days < 3;
+
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <AuthGate>
-      <main className="min-h-screen bg-slate-950 text-slate-100">
-        <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-8">
-          <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h1 className="text-2xl font-semibold tracking-tight">Boban Status</h1>
-              <p className="text-sm text-slate-400">
-                Live view of what your agent is doing and how the Mac mini is feeling.
-              </p>
-            </div>
-            <div className="flex flex-col items-start gap-1 sm:items-end">
-              {lastUpdated && (
-                <p className="text-xs text-slate-500">
-                  Last updated {lastUpdated.toLocaleString()}
-                </p>
+      <div style={{ minHeight: "100vh", background: "#020617", color: "#f1f5f9", fontFamily: "var(--font-inter, 'Inter', system-ui, sans-serif)" }}>
+
+        {/* OAuth expiry warning banner */}
+        {oauthWarn && (
+          <div style={{
+            background: "rgba(239,68,68,0.12)",
+            borderBottom: "1px solid rgba(239,68,68,0.35)",
+            padding: "10px 24px",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}>
+            <span style={{ color: "#fca5a5", fontSize: 13, fontWeight: 500 }}>
+              ⚠️ OAuth token expires in {agentStatus!.oauth_expires_days!.toFixed(1)} days — renew now!
+            </span>
+          </div>
+        )}
+
+        <div style={{ maxWidth: 1440, margin: "0 auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 20 }}>
+
+          {/* ── HEADER ─────────────────────────────────────────────────────── */}
+          <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: "-0.03em", color: "#f1f5f9" }}>
+              Boban 🤖
+            </h1>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              {agentStatus && (
+                <span style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  borderRadius: 999,
+                  padding: "4px 12px",
+                  fontSize: 12,
+                  fontWeight: 500,
+                  background: agentStatus.gateway_running
+                    ? "rgba(16,185,129,0.12)"
+                    : "rgba(239,68,68,0.12)",
+                  color: agentStatus.gateway_running ? "#6ee7b7" : "#fca5a5",
+                  border: `1px solid ${agentStatus.gateway_running ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"}`,
+                }}>
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor", flexShrink: 0 }} />
+                  {agentStatus.gateway_running ? "Gateway running" : "Gateway stopped"}
+                </span>
               )}
-              <div className="flex items-center gap-2">
-                <label
-                  htmlFor="date-range"
-                  className="text-xs font-medium text-slate-400"
-                >
-                  Date range
-                </label>
-                <select
-                  id="date-range"
-                  className="rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                  value={dateRange}
-                  onChange={(e) => setDateRange(e.target.value as "24h" | "7d" | "30d" | "all")}
-                >
-                  <option value="24h">Last 24 hours</option>
-                  <option value="7d">Last 7 days</option>
-                  <option value="30d">Last 30 days</option>
-                  <option value="all">All time</option>
-                </select>
-              </div>
+              {lastUpdated && (
+                <span style={{ fontSize: 11, color: "#334155", fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)" }}>
+                  {lastUpdated.toLocaleTimeString()}
+                </span>
+              )}
             </div>
           </header>
 
+          {/* Supabase / general errors */}
           {!supabase && (
-            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100">
-              Supabase client is not configured. Set
-              {" "}
-              <code className="font-mono">NEXT_PUBLIC_SUPABASE_URL</code>
-              {" "}
-              and
-              {" "}
-              <code className="font-mono">NEXT_PUBLIC_SUPABASE_ANON_KEY</code>
-              {" "}
-              in the environment.
+            <div style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 8, padding: "12px 16px", fontSize: 13, color: "#fcd34d" }}>
+              Supabase client not configured. Set{" "}
+              <code style={{ fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)" }}>NEXT_PUBLIC_SUPABASE_URL</code> and{" "}
+              <code style={{ fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)" }}>NEXT_PUBLIC_SUPABASE_ANON_KEY</code>.
             </div>
           )}
-
           {error && (
-            <div className="rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-100">
+            <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 8, padding: "12px 16px", fontSize: 13, color: "#fca5a5" }}>
               {error}
             </div>
           )}
 
-          {loading && (
-            <section className="grid gap-4 md:grid-cols-3">
-              {[0, 1, 2].map((idx) => (
-                <div
-                  key={idx}
-                  className="rounded-lg border border-slate-800 bg-slate-900/60 p-4 animate-pulse"
-                >
-                  <div className="h-3 w-24 rounded bg-slate-800" />
-                  <div className="mt-3 h-3 w-full rounded bg-slate-900" />
-                  <div className="mt-2 h-3 w-3/4 rounded bg-slate-900" />
+          {/* ── METRICS ROW ────────────────────────────────────────────────── */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+            <MetricCard label="RAM" value={agentStatus?.mac_ram_pct != null ? `${agentStatus.mac_ram_pct.toFixed(1)}%` : "—"} gaugeVal={agentStatus?.mac_ram_pct ?? null} warnAt={70} dangerAt={90} loading={loading} />
+            <MetricCard label="CPU" value={agentStatus?.mac_cpu_pct != null ? `${agentStatus.mac_cpu_pct.toFixed(1)}%` : "—"} gaugeVal={agentStatus?.mac_cpu_pct ?? null} warnAt={70} dangerAt={90} loading={loading} />
+            <MetricCard label="Disk" value={agentStatus?.mac_disk_pct != null ? `${agentStatus.mac_disk_pct.toFixed(1)}%` : "—"} gaugeVal={agentStatus?.mac_disk_pct ?? null} warnAt={80} dangerAt={95} loading={loading} />
+            {/* OAuth card */}
+            <div style={card}>
+              <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "#64748b", marginBottom: 6 }}>OAuth</div>
+              {loading ? (
+                <div style={{ height: 24, borderRadius: 4, background: "#1e293b", marginBottom: 8 }} />
+              ) : (
+                <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)", color: oauthWarn ? "#f87171" : "#f1f5f9", marginBottom: 8, lineHeight: 1 }}>
+                  {agentStatus?.oauth_expires_days != null ? `${agentStatus.oauth_expires_days.toFixed(1)}d` : "—"}
                 </div>
-              ))}
-            </section>
-          )}
-
-          {!loading && !error && status && (
-            <section className="grid gap-4 md:grid-cols-3">
-              <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
-                <h2 className="text-sm font-medium text-slate-200">Current task</h2>
-                <p className="mt-1 text-sm text-slate-100">
-                  {activeBacklog?.title || status.current_task || "Idle"}
-                </p>
-                {activeBacklog && (
-                  <p className="mt-2 text-xs text-slate-400">
-                    Backlog: P{activeBacklog.priority} · {activeBacklog.status.replace("_", " ")}
-                    {activeBacklog.created_by ? ` · ${activeBacklog.created_by}` : ""}
-                  </p>
-                )}
-                {status.last_message && (
-                  <p className="mt-2 text-xs text-slate-400">
-                    Last message: {status.last_message}
-                  </p>
-                )}
-              </div>
-
-              <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
-                <h2 className="text-sm font-medium text-slate-200">Mac mini health</h2>
-                <div className="mt-3 space-y-3 text-xs text-slate-300">
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-medium text-slate-200">RAM</span>
-                      <span className="font-mono">
-                        {status.mac_ram_pct != null
-                          ? `${status.mac_ram_pct.toFixed(1)}%`
-                          : "–"}
-                      </span>
-                    </div>
-                    <div className="gauge-track">
-                      <div
-                        className={`gauge-fill ${
-                          status.mac_ram_pct == null
-                            ? ""
-                            : status.mac_ram_pct < 70
-                            ? "ok"
-                            : status.mac_ram_pct < 90
-                            ? "warn"
-                            : "danger"
-                        }`}
-                        style={{ width: `${Math.min(Math.max(status.mac_ram_pct ?? 0, 0), 100)}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-medium text-slate-200">CPU</span>
-                      <span className="font-mono">
-                        {status.mac_cpu_pct != null
-                          ? `${status.mac_cpu_pct.toFixed(1)}%`
-                          : "–"}
-                      </span>
-                    </div>
-                    <div className="gauge-track">
-                      <div
-                        className={`gauge-fill ${
-                          status.mac_cpu_pct == null
-                            ? ""
-                            : status.mac_cpu_pct < 70
-                            ? "ok"
-                            : status.mac_cpu_pct < 90
-                            ? "warn"
-                            : "danger"
-                        }`}
-                        style={{ width: `${Math.min(Math.max(status.mac_cpu_pct ?? 0, 0), 100)}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-medium text-slate-200">Disk</span>
-                      <span className="font-mono">
-                        {status.mac_disk_pct != null
-                          ? `${status.mac_disk_pct.toFixed(1)}%`
-                          : "–"}
-                      </span>
-                    </div>
-                    <div className="gauge-track">
-                      <div
-                        className={`gauge-fill ${
-                          status.mac_disk_pct == null
-                            ? ""
-                            : status.mac_disk_pct < 80
-                            ? "ok"
-                            : status.mac_disk_pct < 95
-                            ? "warn"
-                            : "danger"
-                        }`}
-                        style={{ width: `${Math.min(Math.max(status.mac_disk_pct ?? 0, 0), 100)}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
-                <h2 className="text-sm font-medium text-slate-200">Gateway & OAuth</h2>
-                <p className="mt-3 text-sm">
-                  <span
-                    className={
-                      status.gateway_running
-                        ? "inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-300"
-                        : "inline-flex items-center rounded-full bg-red-500/10 px-2 py-0.5 text-xs font-medium text-red-300"
-                    }
-                  >
-                    <span className="mr-1 h-1.5 w-1.5 rounded-full bg-current" />
-                    {status.gateway_running ? "Gateway running" : "Gateway stopped"}
-                  </span>
-                </p>
-                <p className="mt-3 text-xs text-slate-300">
-                  OAuth expires in
-                  {" "}
-                  <span className="font-mono">
-                    {status.oauth_expires_days != null
-                      ? `${status.oauth_expires_days.toFixed(1)} days`
-                      : "–"}
-                  </span>
-                </p>
-              </div>
-            </section>
-          )}
-
-          {!loading && !error && !status && (
-            <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4 text-sm text-slate-300">
-              No status rows found yet. Once the push script runs, latest
-              status will show up here.
+              )}
+              <div style={{ fontSize: 10, color: "#334155" }}>days until expiry</div>
             </div>
-          )}
+          </div>
 
-          {!loading && !error && events.length > 0 && (
-            <section className="mt-2 rounded-lg border border-slate-800 bg-slate-900/60 p-4">
-              <h2 className="text-sm font-medium text-slate-200">Recent events</h2>
-              <ul className="mt-3 space-y-2 text-xs text-slate-300">
-                {events.map((evt) => (
-                  <li
-                    key={evt.id ?? `${evt.type}-${evt.ts}`}
-                    className="flex flex-col gap-0.5 border-l border-slate-800 pl-3"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono text-[11px] text-slate-500">
-                        {new Date(evt.ts).toLocaleString()}
-                      </span>
-                      <span className="ml-2 rounded-full bg-slate-800 px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-300">
-                        {evt.type}
-                      </span>
+          {/* ── TWO COLUMN SECTION ──────────────────────────────────────────── */}
+          <div style={{ display: "grid", gridTemplateColumns: "3fr 2fr", gap: 16, alignItems: "start" }}>
+
+            {/* LEFT: Kanban board */}
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: "#475569" }}>
+                  Backlog · {backlogItems.length} tasks
+                </span>
+                <button
+                  style={btnPrimary}
+                  onClick={() => { setEditTask(null); setTaskForm(BLANK_TASK); setShowTaskForm(true); }}
+                >
+                  + New Task
+                </button>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+                {KANBAN_COLUMNS.map(col => {
+                  const colItems = byStatus(col.key);
+                  const isOver = dragOver === col.key;
+                  return (
+                    <div
+                      key={col.key}
+                      onDragOver={e => { e.preventDefault(); setDragOver(col.key); }}
+                      onDragLeave={() => setDragOver(null)}
+                      onDrop={() => handleDrop(col.key)}
+                      style={{
+                        background: isOver ? "rgba(99,102,241,0.06)" : "#080f1f",
+                        border: `1px solid ${isOver ? "rgba(99,102,241,0.4)" : "#1a2540"}`,
+                        borderRadius: 8,
+                        padding: 10,
+                        minHeight: 120,
+                        transition: "all 0.12s",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: col.dot, display: "inline-block", flexShrink: 0 }} />
+                        <span style={{ fontSize: 10, fontWeight: 600, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                          {col.label}
+                        </span>
+                        <span style={{ marginLeft: "auto", fontSize: 10, color: "#334155", background: "#111827", borderRadius: 6, padding: "1px 6px" }}>
+                          {colItems.length}
+                        </span>
+                      </div>
+
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {colItems.length === 0 && (
+                          <div style={{ textAlign: "center", padding: "14px 0", color: "#1e293b", fontSize: 11 }}>
+                            drop here
+                          </div>
+                        )}
+                        {colItems.map(item => (
+                          <div
+                            key={item.id}
+                            draggable
+                            onDragStart={() => setDragging(item.id)}
+                            onDragEnd={() => { setDragging(null); setDragOver(null); }}
+                            onClick={() => openEditTask(item)}
+                            style={{
+                              background: dragging === item.id ? "#1e293b" : "#0f172a",
+                              border: "1px solid #1a2540",
+                              borderRadius: 6,
+                              padding: "8px 10px",
+                              opacity: dragging === item.id ? 0.45 : 1,
+                              cursor: "grab",
+                              transition: "all 0.12s",
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 5, marginBottom: 4 }}>
+                              <span style={{ fontSize: 12, fontWeight: 500, color: "#e2e8f0", lineHeight: 1.4, flex: 1 }}>
+                                {fixText(item.title)}
+                              </span>
+                              <span style={{ fontSize: 9, fontWeight: 600, borderRadius: 3, padding: "2px 5px", flexShrink: 0, ...(PRIORITY_BADGE[item.priority] ?? PRIORITY_BADGE[5]) }}>
+                                P{item.priority}
+                              </span>
+                            </div>
+                            {item.description && (
+                              <p style={{ margin: "0 0 5px", fontSize: 10, color: "#334155", lineHeight: 1.5 }}>
+                                {fixText(item.description).slice(0, 65)}{item.description.length > 65 ? "…" : ""}
+                              </p>
+                            )}
+                            {item.tags && item.tags.length > 0 && (
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+                                {item.tags.map(tag => (
+                                  <span key={tag} style={{ fontSize: 9, color: "#818cf8", background: "rgba(99,102,241,0.1)", borderRadius: 3, padding: "1px 5px", border: "1px solid rgba(99,102,241,0.2)" }}>
+                                    {tag}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                    <p className="text-xs text-slate-200">{evt.message}</p>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* RIGHT: Current task + Events */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+
+              {/* Current task card */}
+              <div style={card}>
+                <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "#475569", marginBottom: 10 }}>
+                  Current Task
+                </div>
+                {loading ? (
+                  <div style={{ height: 52, borderRadius: 6, background: "#1e293b" }} />
+                ) : (
+                  <>
+                    <p style={{ margin: "0 0 6px", fontSize: 14, fontWeight: 500, color: "#f1f5f9", lineHeight: 1.55 }}>
+                      {fixText(activeTask?.title || agentStatus?.current_task || "Idle")}
+                    </p>
+                    {activeTask && (
+                      <p style={{ margin: 0, fontSize: 11, color: "#475569" }}>
+                        P{activeTask.priority} · {activeTask.status.replace("_", " ")}
+                        {activeTask.created_by ? ` · ${activeTask.created_by}` : ""}
+                      </p>
+                    )}
+                    {agentStatus?.last_message && (
+                      <p style={{ margin: "6px 0 0", fontSize: 11, color: "#475569", lineHeight: 1.5 }}>
+                        {fixText(agentStatus.last_message)}
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Last 5 events */}
+              <div style={card}>
+                <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "#475569", marginBottom: 10 }}>
+                  Recent Events
+                </div>
+                {loading ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {[0, 1, 2].map(i => (
+                      <div key={i} style={{ height: 28, borderRadius: 4, background: "#1e293b" }} />
+                    ))}
+                  </div>
+                ) : events.length === 0 ? (
+                  <p style={{ fontSize: 12, color: "#334155", margin: 0 }}>No recent events.</p>
+                ) : (
+                  <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 9 }}>
+                    {events.map(evt => (
+                      <li
+                        key={evt.id ?? `${evt.type}-${evt.ts}`}
+                        style={{ borderLeft: "2px solid #1a2540", paddingLeft: 10, display: "flex", flexDirection: "column", gap: 2 }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
+                          <span style={{ fontSize: 10, color: "#334155", fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)" }}>
+                            {new Date(evt.ts).toLocaleString()}
+                          </span>
+                          <span style={{ fontSize: 9, background: "#111827", color: "#64748b", borderRadius: 4, padding: "1px 6px", textTransform: "uppercase", letterSpacing: "0.06em", flexShrink: 0 }}>
+                            {evt.type}
+                          </span>
+                        </div>
+                        <p style={{ margin: 0, fontSize: 12, color: "#cbd5e1", lineHeight: 1.45 }}>
+                          {fixText(evt.message)}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* ── LEARNING SECTION ─────────────────────────────────────────────── */}
+          <div style={{ border: "1px solid #1a2540", borderRadius: 10, overflow: "hidden" }}>
+            <button
+              onClick={() => setLearningExpanded(v => !v)}
+              style={{
+                width: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "12px 16px",
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                color: "#94a3b8",
+                textAlign: "left",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: "#475569" }}>
+                  Learning Backlog
+                </span>
+                <span style={{ fontSize: 11, color: "#334155", background: "#111827", borderRadius: 6, padding: "2px 8px" }}>
+                  {pendingLearn} pending · {doneLearn} done
+                </span>
+              </div>
+              <span style={{ fontSize: 11, color: "#334155", transform: learningExpanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", display: "inline-block" }}>
+                ▼
+              </span>
+            </button>
+
+            {learningExpanded && (
+              <div style={{ borderTop: "1px solid #1a2540", padding: 16 }}>
+                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+                  <button
+                    onClick={() => { setShowAddLearn(v => !v); setLearnError(null); }}
+                    style={showAddLearn ? { ...btnGhost, color: "#e2e8f0", borderColor: "#334155" } : btnGhost}
+                  >
+                    {showAddLearn ? "Cancel" : "+ Add topic"}
+                  </button>
+                </div>
+
+                {showAddLearn && (
+                  <form
+                    onSubmit={handleAddLearn}
+                    style={{ background: "#080f1f", border: "1px solid #1a2540", borderRadius: 8, padding: 16, marginBottom: 16, display: "flex", flexDirection: "column", gap: 10 }}
+                  >
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                      <div>
+                        <label style={labelSt}>Topic *</label>
+                        <input className="input-dark" placeholder="e.g. Supabase RLS" value={learnForm.topic} onChange={e => setLearnForm(f => ({ ...f, topic: e.target.value }))} />
+                      </div>
+                      <div>
+                        <label style={labelSt}>Priority (1 = highest)</label>
+                        <input type="number" min={1} max={9} className="input-dark" value={learnForm.priority} onChange={e => setLearnForm(f => ({ ...f, priority: Number(e.target.value) || 3 }))} />
+                      </div>
+                    </div>
+                    <div>
+                      <label style={labelSt}>Why this matters</label>
+                      <textarea className="input-dark" placeholder="Context, project, or risk..." value={learnForm.why} onChange={e => setLearnForm(f => ({ ...f, why: e.target.value }))} style={{ minHeight: 60, resize: "vertical" }} />
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                      <div>
+                        <label style={labelSt}>Status</label>
+                        <select className="input-dark" value={learnForm.status} onChange={e => setLearnForm(f => ({ ...f, status: e.target.value as LearningStatus }))}>
+                          <option value="pending">Pending</option>
+                          <option value="in_progress">In Progress</option>
+                          <option value="blocked">Blocked</option>
+                          <option value="done">Done</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={labelSt}>Notes</label>
+                        <textarea className="input-dark" placeholder="Links, repos, constraints..." value={learnForm.notes} onChange={e => setLearnForm(f => ({ ...f, notes: e.target.value }))} style={{ minHeight: 60, resize: "vertical" }} />
+                      </div>
+                    </div>
+                    {learnError && <p style={{ fontSize: 12, color: "#f87171", margin: 0 }}>{learnError}</p>}
+                    <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                      <button type="submit" disabled={savingLearn} style={btnPrimary}>
+                        {savingLearn ? "Saving…" : "Add topic"}
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {learningItems.length === 0 && (
+                    <p style={{ fontSize: 13, color: "#334155", margin: 0 }}>No learning items yet.</p>
+                  )}
+                  {learningItems.map(item => {
+                    const isDone = item.status === "done";
+                    const statusColor =
+                      isDone ? "#34d399" :
+                      item.status === "in_progress" ? "#60a5fa" :
+                      item.status === "blocked" ? "#f87171" :
+                      "#64748b";
+                    const statusBg =
+                      isDone ? "rgba(52,211,153,0.1)" :
+                      item.status === "in_progress" ? "rgba(96,165,250,0.1)" :
+                      item.status === "blocked" ? "rgba(248,113,113,0.1)" :
+                      "rgba(100,116,139,0.1)";
+                    return (
+                      <div key={item.id} style={{ background: "#080f1f", border: "1px solid #1a2540", borderRadius: 8, padding: "10px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 13, fontWeight: 500, color: isDone ? "#334155" : "#e2e8f0", textDecoration: isDone ? "line-through" : "none", flex: 1 }}>
+                            {fixText(item.topic)}
+                          </span>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                            <span style={{ fontSize: 10, color: "#334155" }}>P{item.priority}</span>
+                            <span style={{ fontSize: 10, fontWeight: 600, borderRadius: 4, padding: "2px 7px", background: statusBg, color: statusColor, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                              {item.status.replace("_", " ")}
+                            </span>
+                          </div>
+                        </div>
+                        {item.why && (
+                          <p style={{ margin: 0, fontSize: 12, color: "#475569", lineHeight: 1.5 }}>{fixText(item.why)}</p>
+                        )}
+                        {item.notes && (
+                          <p style={{ margin: 0, fontSize: 11, color: "#334155", whiteSpace: "pre-wrap" }}>{fixText(item.notes)}</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
         </div>
-      </main>
+
+        {/* ── Task modal ──────────────────────────────────────────────────── */}
+        {showTaskForm && (
+          <div
+            style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(4px)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+            onClick={e => { if (e.target === e.currentTarget) { setShowTaskForm(false); setEditTask(null); } }}
+          >
+            <div style={{ background: "#0a1628", border: "1px solid #1e293b", borderRadius: 12, padding: 24, width: "100%", maxWidth: 520, maxHeight: "90vh", overflowY: "auto" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+                <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "#e2e8f0" }}>
+                  {editTask ? "Edit Task" : "New Task"}
+                </h2>
+                <button style={{ ...btnGhost, padding: "4px 10px" }} onClick={() => { setShowTaskForm(false); setEditTask(null); }}>✕</button>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div>
+                  <label style={labelSt}>Title *</label>
+                  <input className="input-dark" placeholder="Task title" value={taskForm.title} onChange={e => setTaskForm(f => ({ ...f, title: e.target.value }))} />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div>
+                    <label style={labelSt}>Priority</label>
+                    <select className="input-dark" value={taskForm.priority} onChange={e => setTaskForm(f => ({ ...f, priority: +e.target.value }))}>
+                      {[1, 2, 3, 4, 5].map(p => (
+                        <option key={p} value={p}>P{p} {p === 1 ? "(highest)" : p === 5 ? "(lowest)" : ""}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={labelSt}>Status</label>
+                    <select className="input-dark" value={taskForm.status} onChange={e => setTaskForm(f => ({ ...f, status: e.target.value as BacklogStatus }))}>
+                      {KANBAN_COLUMNS.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label style={labelSt}>Description</label>
+                  <textarea className="input-dark" placeholder="Details, acceptance criteria…" value={taskForm.description} onChange={e => setTaskForm(f => ({ ...f, description: e.target.value }))} style={{ minHeight: 80, resize: "vertical" }} />
+                </div>
+                <div>
+                  <label style={labelSt}>Tags</label>
+                  <input className="input-dark" placeholder="infra, dashboard, api" value={taskForm.tags} onChange={e => setTaskForm(f => ({ ...f, tags: e.target.value }))} />
+                </div>
+                <div>
+                  <label style={labelSt}>Notes</label>
+                  <textarea className="input-dark" placeholder="Additional notes…" value={taskForm.notes} onChange={e => setTaskForm(f => ({ ...f, notes: e.target.value }))} style={{ minHeight: 60, resize: "vertical" }} />
+                </div>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 20 }}>
+                <div>
+                  {editTask && (
+                    <button style={btnDanger} onClick={() => handleDeleteTask(editTask.id)}>Delete</button>
+                  )}
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button style={btnGhost} onClick={() => { setShowTaskForm(false); setEditTask(null); }}>Cancel</button>
+                  <button style={btnPrimary} onClick={handleSaveTask} disabled={savingTask}>
+                    {savingTask ? "Saving…" : editTask ? "Save changes" : "Add task"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+      </div>
     </AuthGate>
   );
 }
