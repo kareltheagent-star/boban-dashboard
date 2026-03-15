@@ -3,7 +3,6 @@
 import { useEffect, useState, useCallback, FormEvent } from "react";
 import type { CSSProperties } from "react";
 import { supabase } from "../lib/supabaseClient";
-import { useBreakpoint } from "../hooks/useBreakpoint";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type BacklogStatus = "pending" | "in_progress" | "blocked" | "done";
@@ -270,9 +269,6 @@ export default function HomePage() {
   const [savingLearn, setSavingLearn] = useState(false);
   const [learnError, setLearnError] = useState<string | null>(null);
 
-  const bp        = useBreakpoint();
-  const isMobile  = bp === "mobile";
-  const isTablet  = bp === "tablet";
   const [taskMsgExpanded, setTaskMsgExpanded] = useState(false);
 
   // ── Data loading ─────────────────────────────────────────────────────────
@@ -524,14 +520,14 @@ export default function HomePage() {
           </div>
         )}
 
-        <div style={{ maxWidth: 1440, margin: "0 auto", padding: isMobile ? "14px 14px" : "22px 28px", display: "flex", flexDirection: "column", gap: isMobile ? 16 : 22 }}>
+        <div className="page-content">
 
           {/* ── HEADER ───────────────────────────────────────────────────── */}
-          <header style={{ display: "flex", flexWrap: "wrap", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", gap: isMobile ? 10 : 14 }}>
-            <h1 style={{ margin: 0, fontSize: isMobile ? 22 : 28, fontWeight: 700, letterSpacing: "-0.03em", color: C.textMain }}>
+          <header className="page-header">
+            <h1 className="page-title" style={{ color: C.textMain }}>
               Boban 🤖
             </h1>
-            <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "flex-start" : "center", gap: isMobile ? 8 : 14 }}>
+            <div className="header-right">
               {agentStatus && (
                 <span style={{
                   display: "inline-flex", alignItems: "center", gap: 8,
@@ -570,7 +566,7 @@ export default function HomePage() {
           )}
 
           {/* ── METRICS ROW ──────────────────────────────────────────────── */}
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 12 }}>
+          <div className="metrics-grid">
             <MetricCard label="RAM"  value={agentStatus?.mac_ram_pct  != null ? `${agentStatus.mac_ram_pct.toFixed(1)}%`  : "—"} gaugeVal={agentStatus?.mac_ram_pct  ?? null} warnAt={70} dangerAt={90} loading={loading} />
             <MetricCard label="CPU"  value={agentStatus?.mac_cpu_pct  != null ? `${agentStatus.mac_cpu_pct.toFixed(1)}%`  : "—"} gaugeVal={agentStatus?.mac_cpu_pct  ?? null} warnAt={70} dangerAt={90} loading={loading} />
             <MetricCard label="Disk" value={agentStatus?.mac_disk_pct != null ? `${agentStatus.mac_disk_pct.toFixed(1)}%` : "—"} gaugeVal={agentStatus?.mac_disk_pct ?? null} warnAt={80} dangerAt={95} loading={loading} />
@@ -590,7 +586,7 @@ export default function HomePage() {
           </div>
 
           {/* ── TWO COLUMN SECTION ───────────────────────────────────────── */}
-          <div style={{ display: "grid", gridTemplateColumns: isMobile || isTablet ? "1fr" : "3fr 2fr", gap: 18, alignItems: "start" }}>
+          <div className="main-layout">
 
             {/* LEFT: Kanban board */}
             <div>
@@ -603,12 +599,7 @@ export default function HomePage() {
                 </button>
               </div>
 
-              <div
-                className={isMobile ? "kanban-scroll" : ""}
-                style={isMobile ? {} : isTablet
-                  ? { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }
-                  : { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}
-              >
+              <div className="kanban-board">
                 {KANBAN_COLUMNS.map(col => {
                   const colItems = byStatus(col.key);
                   const isOver = dragOver === col.key;
@@ -619,7 +610,6 @@ export default function HomePage() {
                   return (
                     <div
                       key={col.key}
-                      className={isMobile ? "kanban-col-snap" : ""}
                       onDragOver={e => { e.preventDefault(); setDragOver(col.key); }}
                       onDragLeave={() => setDragOver(null)}
                       onDrop={() => handleDrop(col.key)}
@@ -735,11 +725,11 @@ export default function HomePage() {
                     {agentStatus?.last_message && (
                       <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 8, marginTop: 8 }}>
                         <p style={{ margin: 0, fontSize: 13, color: C.textSec, lineHeight: 1.55 }}>
-                          {isMobile && !taskMsgExpanded && agentStatus.last_message.length > 120
+                          {!taskMsgExpanded && agentStatus.last_message.length > 120
                             ? fixText(agentStatus.last_message).slice(0, 120) + "…"
                             : fixText(agentStatus.last_message)}
                         </p>
-                        {isMobile && agentStatus.last_message.length > 120 && (
+                        {agentStatus.last_message.length > 120 && (
                           <button
                             onClick={() => setTaskMsgExpanded(v => !v)}
                             style={{ background: "none", border: "none", cursor: "pointer", color: C.textMuted, fontSize: 11, marginTop: 4, padding: "4px 0", display: "block", minHeight: 44 }}
@@ -789,30 +779,7 @@ export default function HomePage() {
 
           {/* ── LEARNING SECTION ─────────────────────────────────────────── */}
 
-          {/* Mobile: full-screen slide-up modal */}
-          {isMobile && learningExpanded && (
-            <div
-              className="slide-up"
-              style={{ position: "fixed", inset: 0, background: C.pageBg, zIndex: 60, display: "flex", flexDirection: "column" }}
-            >
-              <div style={{ position: "sticky", top: 0, zIndex: 1, background: C.cardBg, borderBottom: `1px solid ${C.border}`, padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 15, fontWeight: 600, color: C.textMain }}>📚 Learning</span>
-                  <span style={{ fontSize: 12, color: C.textSec, background: C.badgeBg, borderRadius: 6, padding: "2px 8px" }}>{pendingLearn} pending</span>
-                  <span style={{ fontSize: 12, color: "#34d399", background: "rgba(52,211,153,0.1)", borderRadius: 6, padding: "2px 8px" }}>{doneLearn} done</span>
-                </div>
-                <button
-                  style={{ background: "transparent", border: `1px solid ${C.border}`, color: C.textSec, borderRadius: 6, padding: "8px 14px", cursor: "pointer", fontSize: 14, minWidth: 44, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center" }}
-                  onClick={() => setLearningExpanded(false)}
-                >✕</button>
-              </div>
-              <div style={{ flex: 1, overflowY: "auto", padding: "16px 14px", paddingBottom: 80 }}>
-                {renderLearningBody()}
-              </div>
-            </div>
-          )}
-
-          {/* Collapsed trigger row + desktop inline expanded */}
+          {/* Collapsed trigger row + inline expanded (works on all screen sizes) */}
           <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
             <button
               onClick={() => setLearningExpanded(v => !v)}
@@ -834,7 +801,7 @@ export default function HomePage() {
               </span>
             </button>
 
-            {learningExpanded && !isMobile && (
+            {learningExpanded && (
               <div style={{ borderTop: `1px solid ${C.border}`, padding: 20 }}>
                 {renderLearningBody()}
               </div>
@@ -849,7 +816,7 @@ export default function HomePage() {
             style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(5px)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
             onClick={e => { if (e.target === e.currentTarget) { setShowTaskForm(false); setEditTask(null); } }}
           >
-              <div style={{ background: C.inputBg, border: `1px solid ${C.border}`, borderRadius: 14, padding: isMobile ? 18 : 28, width: "100%", maxWidth: 540, maxHeight: "90vh", overflowY: "auto" }}>
+              <div style={{ background: C.inputBg, border: `1px solid ${C.border}`, borderRadius: 14, padding: 22, width: "100%", maxWidth: 540, maxHeight: "90vh", overflowY: "auto" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 }}>
                 <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: C.textMain }}>
                   {editTask ? "Edit Task" : "New Task"}

@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { GetServerSideProps } from "next";
 import { createClient } from "@supabase/supabase-js";
-import { useBreakpoint } from "../hooks/useBreakpoint";
 
 type Status = "pending" | "in_progress" | "blocked" | "done";
 
@@ -37,10 +36,6 @@ const PRIORITY_COLORS: Record<number, string> = {
 };
 
 export default function BacklogPage({ initialItems }: Props) {
-  const bp = useBreakpoint();
-  const isMobile = bp === "mobile";
-  const isTablet  = bp === "tablet";
-
   const [items, setItems] = useState<BacklogItem[]>(initialItems);
   const [dragging, setDragging] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<Status | null>(null);
@@ -167,18 +162,13 @@ export default function BacklogPage({ initialItems }: Props) {
       </div>
 
       {/* Kanban Board */}
-      <div
-        className={isMobile ? "kanban-scroll" : ""}
-        style={isMobile ? {} : isTablet
-          ? { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "start" }
-          : { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, alignItems: "start" }}
-      >
+      <div className="kanban-board" style={{ alignItems: "start" }}>
         {COLUMNS.map(col => {
           const colItems = byStatus(col.key);
           return (
             <div
               key={col.key}
-              className={[dragOver === col.key ? "col-drop-active" : "", isMobile ? "kanban-col-snap" : ""].join(" ").trim()}
+              className={dragOver === col.key ? "col-drop-active" : ""}
               onDragOver={e => { e.preventDefault(); setDragOver(col.key); }}
               onDragLeave={() => setDragOver(null)}
               onDrop={() => handleDrop(col.key)}

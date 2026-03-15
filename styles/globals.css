@@ -198,26 +198,28 @@ textarea.input-dark {
   .nav-sidebar { display: flex !important; }
 }
 
-/* ── Hamburger FAB — fixed bottom-right, mobile only ──────────────────── */
+/* ── Hamburger button — top-right corner, mobile only ─────────────────── */
 .hamburger-btn {
   display: none;
   position: fixed;
-  bottom: 24px;
-  right: 20px;
-  z-index: 200;
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  background: #17243a;
+  top: 16px;
+  right: 16px;
+  z-index: 9999;
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  background: rgba(23, 36, 58, 0.95);
   border: 1px solid #263a55;
   color: #dde9f8;
   font-size: 20px;
   cursor: pointer;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 @media (max-width: 767px) {
   .hamburger-btn { display: flex; }
@@ -263,34 +265,122 @@ textarea.input-dark {
   .hamburger-btn    { display: none !important; }
 }
 
-/* Reserve space at bottom so the FAB doesn't overlap the last content row.
-   FAB = bottom:24px + height:48px → occupies roughly bottom 72px.         */
-.page-root { padding-bottom: 88px; }
+/* Content bottom padding — just enough for comfortable reading.
+   Hamburger is now top-right so no large bottom clearance needed.         */
+.page-root { padding-bottom: 16px; }
 @media (min-width: 768px) {
   .page-root { padding-bottom: 0; }
 }
 
-/* Pages-router main content: tighter padding on mobile */
-.pages-main { padding: 16px 14px 88px; min-width: 0; }
+/* Pages-router main content */
+.pages-main { padding: 16px 14px 16px; min-width: 0; }
 @media (min-width: 768px) {
   .pages-main { padding: 24px 28px; }
 }
 
-/* ── Kanban horizontal scroll (mobile) ─────────────────────────────────── */
-.kanban-scroll {
+/* ── CSS-only responsive page layout ────────────────────────────────────── */
+
+/* Page content wrapper */
+.page-content {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 14px;
   display: flex;
-  overflow-x: auto;
-  scroll-snap-type: x mandatory;
-  -webkit-overflow-scrolling: touch;
+  flex-direction: column;
+  gap: 16px;
+}
+@media (min-width: 768px) {
+  .page-content { padding: 22px 28px; gap: 22px; }
+}
+
+/* Page header: flex-start on mobile (so hamburger doesn't crowd it) */
+.page-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 10px;
-  padding-bottom: 8px;
+  /* Reserve right side for the fixed hamburger button on mobile */
+  padding-right: 52px;
 }
-/* Each column snaps */
-.kanban-col-snap {
-  scroll-snap-align: start;
-  min-width: 280px;
-  flex-shrink: 0;
+@media (min-width: 768px) {
+  .page-header { align-items: center; gap: 14px; padding-right: 0; }
 }
+
+/* Page title: smaller on mobile */
+.page-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+@media (min-width: 768px) {
+  .page-title { font-size: 28px; }
+}
+
+/* Header right side: stacked on mobile, inline on desktop */
+.header-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+@media (min-width: 768px) {
+  .header-right { flex-direction: row; align-items: center; gap: 14px; }
+}
+
+/* Metrics grid: 2×2 on mobile → 4 cols on desktop */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (min-width: 768px) {
+  .metrics-grid { grid-template-columns: repeat(4, 1fr); }
+}
+
+/* Main layout: single column → 3:2 two-column on large screens */
+.main-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 18px;
+  align-items: start;
+}
+@media (min-width: 1024px) {
+  .main-layout { grid-template-columns: 3fr 2fr; }
+}
+
+/* Kanban board: vertical stack on mobile → grid on tablet/desktop.
+   This is CSS-only — no JS breakpoint detection needed.                    */
+.kanban-board {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+@media (min-width: 768px) {
+  .kanban-board {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+}
+@media (min-width: 1024px) {
+  .kanban-board { grid-template-columns: repeat(4, 1fr); }
+}
+
+/* Stat cards grid (Bertik): same 2×2 → 4-col pattern */
+.stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (min-width: 768px) {
+  .stat-grid { grid-template-columns: repeat(4, 1fr); }
+}
+
+/* Legacy scroll classes kept for reference but no longer used */
+.kanban-scroll { display: flex; flex-direction: column; gap: 10px; }
+.kanban-col-snap { width: 100%; }
 
 /* ── 2-column form grid (single on mobile) ─────────────────────────────── */
 .form-grid-2 {
