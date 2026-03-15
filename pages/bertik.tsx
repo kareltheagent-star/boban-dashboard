@@ -498,18 +498,18 @@ export default function BertikPage({ active, settled, chartData, stats, tableErr
           </span>
         </div>
 
-        <div style={{ background: C.cardBg, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
+        <div style={{ background: C.cardBg, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "clip" }}>
           {active.length === 0 ? (
             <p style={{ margin: 0, padding: "18px 16px", fontSize: 13, color: C.textMuted }}>
               No active recommendations right now.
             </p>
           ) : (
-            <div style={{ overflowX: "auto" }}>
+            <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
               <table style={{ width: "100%", minWidth: 700, borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ background: C.itemBg }}>
-                    <th style={thStyle}>Sport</th>
-                    <th style={thStyle}>Match</th>
+                    <th style={{ ...thStyle, position: "sticky", left: 0, background: C.itemBg, zIndex: 2, boxShadow: "2px 0 6px rgba(0,0,0,0.25)" }}>Sport</th>
+                    <th style={{ ...thStyle, position: "sticky", left: 74, background: C.itemBg, zIndex: 2, boxShadow: "2px 0 6px rgba(0,0,0,0.15)" }}>Match</th>
                     <th style={thStyle}>Bet type</th>
                     <th style={thStyle}>Odds</th>
                     <th style={thStyle}>Edge %</th>
@@ -526,10 +526,10 @@ export default function BertikPage({ active, settled, chartData, stats, tableErr
                     const cs   = CONF_STYLE[conf] ?? CONF_STYLE.medium;
                     return (
                       <tr key={rec.id} style={{ transition: "background 0.1s" }}>
-                        <td style={tdStyle}>
+                        <td style={{ ...tdStyle, position: "sticky", left: 0, background: C.cardBg, zIndex: 1, boxShadow: "2px 0 6px rgba(0,0,0,0.25)" }}>
                           <SportTag sport={p.sport} league={p.league} />
                         </td>
-                        <td style={{ ...tdStyle, fontWeight: 600, maxWidth: 200 }}>
+                        <td style={{ ...tdStyle, fontWeight: 600, maxWidth: 200, position: "sticky", left: 74, background: C.cardBg, zIndex: 1, boxShadow: "2px 0 6px rgba(0,0,0,0.15)" }}>
                           {p.matchLabel}
                         </td>
                         <td style={{ ...tdStyle, color: C.textSec }}>
@@ -572,18 +572,18 @@ export default function BertikPage({ active, settled, chartData, stats, tableErr
           </span>
         </div>
 
-        <div style={{ background: C.cardBg, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
+        <div style={{ background: C.cardBg, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "clip" }}>
           {settled.length === 0 ? (
             <p style={{ margin: 0, padding: "18px 16px", fontSize: 13, color: C.textMuted }}>
               No settled bets yet.
             </p>
           ) : (
-            <div style={{ overflowX: "auto" }}>
+            <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
               <table style={{ width: "100%", minWidth: 600, borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ background: C.itemBg }}>
-                    <th style={thStyle}>Sport</th>
-                    <th style={thStyle}>Match</th>
+                    <th style={{ ...thStyle, position: "sticky", left: 0, background: C.itemBg, zIndex: 2, boxShadow: "2px 0 6px rgba(0,0,0,0.25)" }}>Sport</th>
+                    <th style={{ ...thStyle, position: "sticky", left: 74, background: C.itemBg, zIndex: 2, boxShadow: "2px 0 6px rgba(0,0,0,0.15)" }}>Match</th>
                     <th style={thStyle}>Bet type</th>
                     <th style={thStyle}>Odds</th>
                     <th style={thStyle}>Outcome</th>
@@ -602,10 +602,10 @@ export default function BertikPage({ active, settled, chartData, stats, tableErr
                       : C.textSec;
                     return (
                       <tr key={rec.id}>
-                        <td style={tdStyle}>
+                        <td style={{ ...tdStyle, position: "sticky", left: 0, background: C.cardBg, zIndex: 1, boxShadow: "2px 0 6px rgba(0,0,0,0.25)" }}>
                           <SportTag sport={p.sport} league={p.league} />
                         </td>
-                        <td style={{ ...tdStyle, fontWeight: 600, maxWidth: 180 }}>
+                        <td style={{ ...tdStyle, fontWeight: 600, maxWidth: 180, position: "sticky", left: 74, background: C.cardBg, zIndex: 1, boxShadow: "2px 0 6px rgba(0,0,0,0.15)" }}>
                           {p.matchLabel}
                         </td>
                         <td style={{ ...tdStyle, color: C.textSec }}>

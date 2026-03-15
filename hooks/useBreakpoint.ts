@@ -1,4 +1,3 @@
-"use client";
 import { useState, useEffect, useLayoutEffect } from "react";
 
 export type Breakpoint = "mobile" | "tablet" | "desktop";

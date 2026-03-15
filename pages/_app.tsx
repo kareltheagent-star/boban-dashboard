@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import '../styles/globals.css';
 import { AuthGate } from '../components/AuthGate';
-import { BottomNav } from '../components/BottomNav';
+import { NavDrawer } from '../components/NavDrawer';
 
 const C = {
   cardBg:    "#17243a",
@@ -115,7 +115,7 @@ export default function BobanDashboardApp({ Component, pageProps }: AppProps) {
             <Component {...pageProps} />
           </main>
         </div>
-        <BottomNav currentPath={router.pathname} />
+        <NavDrawer currentPath={router.pathname} />
       </AuthGate>
     </>
   );

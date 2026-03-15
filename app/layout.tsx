@@ -3,7 +3,7 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthGate } from "../components/AuthGate";
 import { NavSidebar } from "./NavSidebar";
-import { BottomNavWrapper } from "./BottomNavWrapper";
+import { DrawerWrapper } from "./DrawerWrapper";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -38,7 +38,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               {children}
             </main>
           </div>
-          <BottomNavWrapper />
+          <DrawerWrapper />
         </AuthGate>
       </body>
     </html>
