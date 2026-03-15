@@ -501,59 +501,113 @@ export default function BertikPage({ active, settled, chartData, stats, tableErr
               No active recommendations right now.
             </p>
           ) : (
-            <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-              <table style={{ width: "100%", minWidth: 700, borderCollapse: "collapse" }}>
-                <thead>
-                  <tr style={{ background: C.itemBg }}>
-                    <th style={{ ...thStyle, position: "sticky", left: 0, background: C.itemBg, zIndex: 2, boxShadow: "2px 0 6px rgba(0,0,0,0.25)" }}>Sport</th>
-                    <th style={{ ...thStyle, position: "sticky", left: 74, background: C.itemBg, zIndex: 2, boxShadow: "2px 0 6px rgba(0,0,0,0.15)" }}>Match</th>
-                    <th style={thStyle}>Bet type</th>
-                    <th style={thStyle}>Odds</th>
-                    <th style={thStyle}>Edge %</th>
-                    <th style={thStyle}>EV %</th>
-                    <th style={thStyle}>Stake %</th>
-                    <th style={thStyle}>Confidence</th>
-                    <th style={thStyle}>Rec&apos;d at</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {active.map(rec => {
-                    const p    = parsedRec(rec);
-                    const conf = rec.confidence ?? "medium";
-                    const cs   = CONF_STYLE[conf] ?? CONF_STYLE.medium;
-                    return (
-                      <tr key={rec.id} style={{ transition: "background 0.1s" }}>
-                        <td style={{ ...tdStyle, position: "sticky", left: 0, background: C.cardBg, zIndex: 1, boxShadow: "2px 0 6px rgba(0,0,0,0.25)" }}>
-                          <SportTag sport={p.sport} league={p.league} />
-                        </td>
-                        <td style={{ ...tdStyle, fontWeight: 600, maxWidth: 200, position: "sticky", left: 74, background: C.cardBg, zIndex: 1, boxShadow: "2px 0 6px rgba(0,0,0,0.15)" }}>
+            <>
+              {/* ── Mobile: one card per recommendation ──────────────────── */}
+              <div className="mobile-only" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
+                {active.map(rec => {
+                  const p    = parsedRec(rec);
+                  const conf = rec.confidence ?? "medium";
+                  const cs   = CONF_STYLE[conf] ?? CONF_STYLE.medium;
+                  return (
+                    <div key={rec.id} style={{ background: C.itemBg, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 14px" }}>
+                      {/* Sport tag + Match */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                        <SportTag sport={p.sport} league={p.league} />
+                        <span style={{ fontSize: 14, fontWeight: 600, color: C.textMain, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {p.matchLabel}
-                        </td>
-                        <td style={{ ...tdStyle, color: C.textSec }}>
-                          {p.betType}
-                        </td>
-                        <td style={tdMuted}>{fmtOdds(rec.decimal_odds ?? rec.odds)}</td>
-                        <td style={{ ...tdMuted, color: rec.edge_pct != null && rec.edge_pct > 0 ? "#34d399" : C.textSec }}>
-                          {rec.edge_pct != null ? `${rec.edge_pct.toFixed(1)}%` : "—"}
-                        </td>
-                        <td style={{ ...tdMuted, color: rec.ev_pct != null && rec.ev_pct > 0 ? "#34d399" : C.textSec }}>
-                          {rec.ev_pct != null ? `${rec.ev_pct.toFixed(1)}%` : "—"}
-                        </td>
-                        <td style={tdMuted}>
-                          {rec.stake_pct != null ? `${rec.stake_pct.toFixed(1)}%` : "—"}
-                        </td>
-                        <td style={tdStyle}>
-                          <Badge label={conf} color={cs.color} bg={cs.bg} />
-                        </td>
-                        <td style={{ ...tdMuted, whiteSpace: "nowrap" }}>
-                          {new Date(rec.recommended_at).toLocaleString()}
-                        </td>
+                        </span>
+                      </div>
+                      {/* Bet type */}
+                      <div style={{ fontSize: 12, color: C.textSec, marginBottom: 10 }}>
+                        {p.betType}
+                      </div>
+                      {/* Stats: Odds | Edge | Confidence */}
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                        <div>
+                          <div style={{ fontSize: 10, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 3 }}>Odds</div>
+                          <div style={{ fontSize: 14, fontWeight: 600, fontFamily: "var(--font-mono,'JetBrains Mono',monospace)", color: C.textMain }}>
+                            {fmtOdds(rec.decimal_odds ?? rec.odds)}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 10, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 3 }}>Edge</div>
+                          <div style={{ fontSize: 14, fontWeight: 600, fontFamily: "var(--font-mono,'JetBrains Mono',monospace)", color: rec.edge_pct != null && rec.edge_pct > 0 ? "#34d399" : C.textSec }}>
+                            {rec.edge_pct != null ? `${rec.edge_pct.toFixed(1)}%` : "—"}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 10, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 3 }}>Confidence</div>
+                          <div style={{ marginTop: 1 }}>
+                            <Badge label={conf} color={cs.color} bg={cs.bg} />
+                          </div>
+                        </div>
+                      </div>
+                      {/* Timestamp */}
+                      <div style={{ fontSize: 11, color: C.textMuted, marginTop: 8, fontFamily: "var(--font-mono,'JetBrains Mono',monospace)" }}>
+                        {new Date(rec.recommended_at).toLocaleString()}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* ── Desktop: scrollable table (unchanged) ─────────────────── */}
+              <div className="desktop-only">
+                <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+                  <table style={{ width: "100%", minWidth: 700, borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ background: C.itemBg }}>
+                        <th style={{ ...thStyle, position: "sticky", left: 0, background: C.itemBg, zIndex: 2, boxShadow: "2px 0 6px rgba(0,0,0,0.25)" }}>Sport</th>
+                        <th style={{ ...thStyle, position: "sticky", left: 74, background: C.itemBg, zIndex: 2, boxShadow: "2px 0 6px rgba(0,0,0,0.15)" }}>Match</th>
+                        <th style={thStyle}>Bet type</th>
+                        <th style={thStyle}>Odds</th>
+                        <th style={thStyle}>Edge %</th>
+                        <th style={thStyle}>EV %</th>
+                        <th style={thStyle}>Stake %</th>
+                        <th style={thStyle}>Confidence</th>
+                        <th style={thStyle}>Rec&apos;d at</th>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                    </thead>
+                    <tbody>
+                      {active.map(rec => {
+                        const p    = parsedRec(rec);
+                        const conf = rec.confidence ?? "medium";
+                        const cs   = CONF_STYLE[conf] ?? CONF_STYLE.medium;
+                        return (
+                          <tr key={rec.id} style={{ transition: "background 0.1s" }}>
+                            <td style={{ ...tdStyle, position: "sticky", left: 0, background: C.cardBg, zIndex: 1, boxShadow: "2px 0 6px rgba(0,0,0,0.25)" }}>
+                              <SportTag sport={p.sport} league={p.league} />
+                            </td>
+                            <td style={{ ...tdStyle, fontWeight: 600, maxWidth: 200, position: "sticky", left: 74, background: C.cardBg, zIndex: 1, boxShadow: "2px 0 6px rgba(0,0,0,0.15)" }}>
+                              {p.matchLabel}
+                            </td>
+                            <td style={{ ...tdStyle, color: C.textSec }}>
+                              {p.betType}
+                            </td>
+                            <td style={tdMuted}>{fmtOdds(rec.decimal_odds ?? rec.odds)}</td>
+                            <td style={{ ...tdMuted, color: rec.edge_pct != null && rec.edge_pct > 0 ? "#34d399" : C.textSec }}>
+                              {rec.edge_pct != null ? `${rec.edge_pct.toFixed(1)}%` : "—"}
+                            </td>
+                            <td style={{ ...tdMuted, color: rec.ev_pct != null && rec.ev_pct > 0 ? "#34d399" : C.textSec }}>
+                              {rec.ev_pct != null ? `${rec.ev_pct.toFixed(1)}%` : "—"}
+                            </td>
+                            <td style={tdMuted}>
+                              {rec.stake_pct != null ? `${rec.stake_pct.toFixed(1)}%` : "—"}
+                            </td>
+                            <td style={tdStyle}>
+                              <Badge label={conf} color={cs.color} bg={cs.bg} />
+                            </td>
+                            <td style={{ ...tdMuted, whiteSpace: "nowrap" }}>
+                              {new Date(rec.recommended_at).toLocaleString()}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
           )}
         </div>
       </section>

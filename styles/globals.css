@@ -382,6 +382,14 @@ textarea.input-dark {
 .kanban-scroll { display: flex; flex-direction: column; gap: 10px; }
 .kanban-col-snap { width: 100%; }
 
+/* ── Show/hide helpers (mobile vs desktop) ─────────────────────────────── */
+.mobile-only  { display: block; }
+.desktop-only { display: none;  }
+@media (min-width: 768px) {
+  .mobile-only  { display: none  !important; }
+  .desktop-only { display: block; }
+}
+
 /* ── 2-column form grid (single on mobile) ─────────────────────────────── */
 .form-grid-2 {
   display: grid;

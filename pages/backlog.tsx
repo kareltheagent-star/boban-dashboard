@@ -1,6 +1,7 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { GetServerSideProps } from "next";
 import { createClient } from "@supabase/supabase-js";
+import { supabase } from '../lib/supabaseClient';
 
 type Status = "pending" | "in_progress" | "blocked" | "done";
 
@@ -35,6 +36,24 @@ const PRIORITY_COLORS: Record<number, string> = {
   5: "bg-slate-500/20 text-slate-400 ring-1 ring-slate-500/40",
 };
 
+class PageErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; message: string }
+> {
+  state = { hasError: false, message: "" };
+  static getDerivedStateFromError(err: Error) {
+    return { hasError: true, message: err?.message ?? "Unknown error" };
+  }
+  render() {
+    if (this.state.hasError) return (
+      <div style={{ padding: 24, color: "#f87171", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 8, fontFamily: "monospace", fontSize: 13 }}>
+        <b>⚠ Tasks page error</b> — {this.state.message}
+      </div>
+    );
+    return this.props.children;
+  }
+}
+
 export default function BacklogPage({ initialItems }: Props) {
   const [items, setItems] = useState<BacklogItem[]>(initialItems);
   const [dragging, setDragging] = useState<string | null>(null);
@@ -43,11 +62,6 @@ export default function BacklogPage({ initialItems }: Props) {
   const [editItem, setEditItem] = useState<BacklogItem | null>(null);
   const [form, setForm] = useState({ title: "", description: "", priority: 3, status: "pending" as Status, tags: "", notes: "" });
   const [saving, setSaving] = useState(false);
-
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
 
   const byStatus = (status: Status) => {
     const filtered = items.filter(i => i.status === status);
@@ -67,7 +81,7 @@ export default function BacklogPage({ initialItems }: Props) {
   const handleDragEnd = () => { setDragging(null); setDragOver(null); };
 
   const handleDrop = async (status: Status) => {
-    if (!dragging) return;
+    if (!dragging || !supabase) return;
     setDragOver(null);
     const item = items.find(i => i.id === dragging);
     if (!item || item.status === status) return;
@@ -90,7 +104,7 @@ export default function BacklogPage({ initialItems }: Props) {
   };
 
   const handleSubmit = async () => {
-    if (!form.title.trim()) return;
+    if (!form.title.trim() || !supabase) return;
     setSaving(true);
     const payload = {
       title: form.title,
@@ -114,6 +128,7 @@ export default function BacklogPage({ initialItems }: Props) {
   };
 
   const handleDelete = async (id: string) => {
+    if (!supabase) return;
     await supabase.from("agent_backlog").delete().eq("id", id);
     setItems(prev => prev.filter(i => i.id !== id));
     setShowForm(false);
@@ -121,6 +136,7 @@ export default function BacklogPage({ initialItems }: Props) {
   };
 
   return (
+    <PageErrorBoundary>
     <div style={{ fontFamily: "'JetBrains Mono', 'Fira Code', monospace" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Inter:wght@300;400;500;600&display=swap');
@@ -309,6 +325,7 @@ export default function BacklogPage({ initialItems }: Props) {
         </div>
       )}
     </div>
+    </PageErrorBoundary>
   );
 }
 
