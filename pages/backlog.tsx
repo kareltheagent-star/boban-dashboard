@@ -15,6 +15,7 @@ interface BacklogItem {
   tags?: string[];
   notes?: string;
   created_at: string;
+  updated_at?: string;
 }
 
 interface Props {
@@ -66,9 +67,11 @@ export default function BacklogPage({ initialItems }: Props) {
   const byStatus = (status: Status) => {
     const filtered = items.filter(i => i.status === status);
     if (status === "done") {
-      return filtered.sort((a, b) =>
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      );
+      return filtered.sort((a, b) => {
+        const ta = new Date(a.updated_at ?? a.created_at).getTime();
+        const tb = new Date(b.updated_at ?? b.created_at).getTime();
+        return tb - ta;
+      });
     }
     return filtered.sort((a, b) =>
       a.priority !== b.priority
@@ -85,8 +88,9 @@ export default function BacklogPage({ initialItems }: Props) {
     setDragOver(null);
     const item = items.find(i => i.id === dragging);
     if (!item || item.status === status) return;
-    setItems(prev => prev.map(i => i.id === dragging ? { ...i, status } : i));
-    await supabase.from("agent_backlog").update({ status }).eq("id", dragging);
+    const now = new Date().toISOString();
+    setItems(prev => prev.map(i => i.id === dragging ? { ...i, status, updated_at: now } : i));
+    await supabase.from("agent_backlog").update({ status, updated_at: now }).eq("id", dragging);
     setDragging(null);
   };
 
@@ -106,6 +110,7 @@ export default function BacklogPage({ initialItems }: Props) {
   const handleSubmit = async () => {
     if (!form.title.trim() || !supabase) return;
     setSaving(true);
+    const now = new Date().toISOString();
     const payload = {
       title: form.title,
       description: form.description,
@@ -113,6 +118,7 @@ export default function BacklogPage({ initialItems }: Props) {
       status: form.status,
       tags: form.tags.split(",").map(t => t.trim()).filter(Boolean),
       notes: form.notes,
+      updated_at: now,
     };
     if (editItem) {
       await supabase.from("agent_backlog").update(payload).eq("id", editItem.id);
